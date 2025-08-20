@@ -36,6 +36,11 @@ def main():
         action="store_true",
         help="Enable debug logging (shows CDS API requests)",
     )
+    parser.add_argument(
+        "--country",
+        type=str,
+        help="Country name to filter data (e.g., 'USA', 'Brazil'). If not specified, downloads global data.",
+    )
 
     args = parser.parse_args()
 
@@ -62,6 +67,7 @@ def main():
         end_year=args.end_year,
         variables=variables,
         max_concurrent=args.concurrent,
+        country=args.country,
     )
 
 

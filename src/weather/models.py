@@ -9,8 +9,8 @@ class WeatherVariable(Enum):
     """Available weather variables from AgERA5"""
 
     # Basic active variables
-    TEMP_MIN = ("2m_temperature", "24_hour_minimum")
-    TEMP_MAX = ("2m_temperature", "24_hour_maximum")
+    T2M_MIN = ("2m_temperature", "24_hour_minimum")
+    T2M_MAX = ("2m_temperature", "24_hour_maximum")
     # TEMP_MEAN = ("2m_temperature", "24_hour_mean")
     PRECIPITATION = ("precipitation_flux", "24_hour_mean")
     SNOW_LWE = ("snow_thickness_lwe", "24_hour_mean")

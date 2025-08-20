@@ -39,7 +39,13 @@ python download_weather.py --start-year 2020 --end-year 2021
 # Download specific variables
 python download_weather.py --variables temp_min temp_max precipitation
 
-# Download full dataset (1979-present)
+# Download for specific country (much smaller files!)
+python download_weather.py --country USA --start-year 2020 --end-year 2021
+
+# Download for Brazil
+python download_weather.py --country Brazil --variables precipitation
+
+# Download full dataset (1979-present) - GLOBAL (WARNING: HUGE!)
 python download_weather.py
 
 # List all available weather variables
@@ -62,7 +68,8 @@ See all available variables with: `python download_weather.py --list-variables`
 
 ## Features
 
-- **Global data**: Downloads worldwide AgERA5 data (no country restrictions)
+- **Country filtering**: Download data for specific countries (reduces file size from 1.86 GB / variable / year to much smaller!)
+- **Global data**: Downloads worldwide AgERA5 data when no country specified
 - **Year-based downloads**: Downloads each variable year by year for transparent progress
 - **Progress tracking**: Real-time progress bars showing current download
 - **Skip existing**: Automatically skips already downloaded files
@@ -72,13 +79,25 @@ See all available variables with: `python download_weather.py --list-variables`
 
 ## Output
 
-Files saved to `data/weather/`:
+**Global downloads** saved to `data/weather/`:
 ```
 data/
 └── weather/
     ├── 2020_temp_min.nc
     ├── 2020_temp_max.nc
-    ├── 2020_precipitation.nc
-    ├── 2021_temp_min.nc
     └── ...
+```
+
+**Country-specific downloads** saved to `data/{country}/weather/`:
+```
+data/
+├── usa/
+│   └── weather/
+│       ├── 2020_temp_min.nc
+│       ├── 2020_temp_max.nc
+│       └── ...
+└── brazil/
+    └── weather/
+        ├── 2020_precipitation.nc
+        └── ...
 ```

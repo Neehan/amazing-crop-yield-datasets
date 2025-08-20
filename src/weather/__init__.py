@@ -11,6 +11,7 @@ def download_weather(
     end_year: Optional[int] = None,
     variables: Optional[List[WeatherVariable]] = None,
     max_concurrent: int = 3,
+    country: Optional[str] = None,
 ):
     """Download global AgERA5 weather data with year-based iteration
 
@@ -22,6 +23,7 @@ def download_weather(
         end_year: Last year to download (default: previous year)
         variables: Weather variables to download (default: all available)
         max_concurrent: Maximum concurrent downloads (not used in current implementation)
+        country: Country name to filter data (default: None for global data)
 
     Example:
         # Download all data for 2020-2023
@@ -31,7 +33,7 @@ def download_weather(
         download_weather(variables=[WeatherVariable.TEMP_MIN, WeatherVariable.TEMP_MAX])
     """
     downloader = WeatherDownloader(max_concurrent=max_concurrent)
-    downloader.download(start_year, end_year, variables)
+    downloader.download(start_year, end_year, variables, country)
 
 
 __all__ = ["download_weather", "WeatherDownloader", "WeatherVariable"]

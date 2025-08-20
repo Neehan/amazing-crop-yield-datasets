@@ -35,20 +35,28 @@ class WeatherDownloader:
         start_year: int = 1979,
         end_year: Optional[int] = None,
         variables: Optional[List[WeatherVariable]] = None,
+        country: Optional[str] = None,
     ):
-        """Download global weather data
+        """Download weather data (global or country-specific)
 
         Args:
             start_year: First year to download data for
             end_year: Last year to download data for (defaults to previous year)
             variables: List of weather variables to download (defaults to all)
+            country: Country name to filter data (defaults to global)
         """
         end_year = end_year or datetime.now().year - 1
         variables = variables or list(WeatherVariable)
 
-        output_dir = self._ensure_weather_directory_exists()
+        # Get country bounds if specified
+        bounds = None
+        if country:
+            bounds = self.geography.get_country_bounds(country)
+            logger.info(f"Downloading weather data for {country} ({start_year}-{end_year})")
+        else:
+            logger.info(f"Downloading global weather data ({start_year}-{end_year})")
 
-        logger.info(f"Downloading global weather data ({start_year}-{end_year})")
+        output_dir = self._ensure_weather_directory_exists(country)
 
         # Download each variable for each year
         for variable in variables:
@@ -60,19 +68,26 @@ class WeatherDownloader:
                     logger.debug(f"Skipping existing file: {file_path}")
                     continue
                 
-                request = self._build_cds_request(year, variable)
+                request = self._build_cds_request(year, variable, bounds)
                 logger.debug(f"CDS API Request: {request}")
                 result = self.client.retrieve(self.config.dataset_name, request)
                 result.download(str(file_path))
                 logger.info(f"Downloaded: {file_path}")
 
-    def _ensure_weather_directory_exists(self) -> Path:
-        """Create and return the global weather data directory
+    def _ensure_weather_directory_exists(self, country: Optional[str] = None) -> Path:
+        """Create and return the weather data directory
+
+        Args:
+            country: Country name for subdirectory (optional)
 
         Returns:
             Path to the weather data directory
         """
-        weather_dir = self.data_dir / "weather"
+        if country:
+            # Create country-specific subdirectory
+            weather_dir = self.data_dir / country.lower() / "weather"
+        else:
+            weather_dir = self.data_dir / "weather"
         weather_dir.mkdir(parents=True, exist_ok=True)
         return weather_dir
 
@@ -80,12 +95,14 @@ class WeatherDownloader:
         self,
         year: int,
         variable: WeatherVariable,
+        bounds: Optional[GeoBounds] = None,
     ) -> dict:
         """Build a request dictionary for the AgERA5 CDS API
 
         Args:
             year: Year of data to request
             variable: Weather variable to download
+            bounds: Geographic bounds to limit download area (optional)
 
         Returns:
             Dictionary formatted for CDS API request
@@ -101,6 +118,10 @@ class WeatherDownloader:
         # Add statistic for variables that require it
         if variable.statistic:
             request["statistic"] = [variable.statistic]
+        
+        # Add area bounds for country-specific downloads
+        if bounds:
+            request["area"] = bounds.to_cds_area()
             
         return request
 
