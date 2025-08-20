@@ -2,7 +2,7 @@
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Optional
 
 
 class WeatherVariable(Enum):
@@ -11,9 +11,12 @@ class WeatherVariable(Enum):
     # Basic active variables
     T2M_MIN = ("2m_temperature", "24_hour_minimum")
     T2M_MAX = ("2m_temperature", "24_hour_maximum")
-    PRECIPITATION = ("precipitation_flux", "24_hour_mean")
+    PRECIPITATION = (
+        "precipitation_flux",
+        None,
+    )  # No statistic required for precipitation_flux
     SNOW_LWE = ("snow_thickness_lwe", "24_hour_mean")
-    SOLAR_RADIATION = ("solar_radiation_flux", "24_hour_mean")
+    SOLAR_RADIATION = ("solar_radiation_flux", None)
     VAPOR_PRESSURE = ("vapour_pressure", "24_hour_mean")
 
     # All other AgERA5 variables (uncomment as needed)
@@ -39,10 +42,13 @@ class WeatherVariable(Enum):
     # VAPOR_PRESSURE_DEFICIT = ("Vapour_Pressure_Deficit_at_Maximum_Temperature", None)
     # PRECIP_DURATION = ("Precipitation_Duration_Fraction", None)
 
-    def __init__(self, variable: str, statistic: str):
+    def __init__(self, variable: str, statistic: Optional[str] = None):
         self.variable = variable
         self.statistic = statistic
-        self.key = self.name.lower()  # Use enum name as key
+
+    @property
+    def key(self):
+        return self.name.lower()  # Use enum name as key
 
 
 @dataclass
@@ -51,5 +57,3 @@ class DownloadConfig:
 
     dataset_name: str = "sis-agrometeorological-indicators"
     version: str = "2_0"
-
-
