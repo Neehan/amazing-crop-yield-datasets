@@ -1,103 +1,58 @@
-# Weather Data Downloader
+# Amazing Crop Yield Datasets (ACYD)
 
-Clean, modern tool for downloading global AgERA5 weather data.
+Download and process weather data to county-level weekly averages for crop yield modeling.
 
-## Installation
+## Setup
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Requirements
-
-- Python 3.8+
-- CDS API account and key (see setup below)
-
-## CDS API Setup
-
+Get CDS API key:
 1. Register at https://cds.climate.copernicus.eu
-2. **Accept the license agreement** for the AgERA5 dataset at: https://cds.climate.copernicus.eu/cdsapp#!/dataset/sis-agrometeorological-indicators
-3. Get your API key from your profile page
-4. Create the config file:
-   ```bash
-   nano ~/.cdsapirc
-   ```
-5. Add these lines (replace with your actual key):
-   ```
-   url: https://cds.climate.copernicus.eu/api/v2
-   key: YOUR_API_KEY_HERE
-   ```
-6. Save and exit (Ctrl+O, Enter, Ctrl+X)
-
+2. Accept AgERA5 license: https://cds.climate.copernicus.eu/cdsapp#!/dataset/sis-agrometeorological-indicators
+3. Add key to `~/.cdsapirc`:
+```
+url: https://cds.climate.copernicus.eu/api/v2
+key: YOUR_API_KEY_HERE
+```
 
 ## Usage
 
+### 1. Download Weather Data
+
 ```bash
-# Download all weather variables (2020-2021)  
-python download_weather.py --start-year 2020 --end-year 2021
+# Download for a country
+python download_weather.py --country USA --start-year 2020 --end-year 2022
 
-# Download specific variables
-python download_weather.py --variables temp_min temp_max precipitation
-
-# Download for specific country (much smaller files!)
-python download_weather.py --country USA --start-year 2020 --end-year 2021
-
-# Download for Brazil
-python download_weather.py --country Brazil --variables precipitation
-
-# Download full dataset (1979-present) - GLOBAL (WARNING: HUGE!)
-python download_weather.py
-
-# List all available weather variables
-python download_weather.py --list-variables
-
-# Enable debug logging (shows CDS API requests)
-python download_weather.py --start-year 2020 --end-year 2021 --debug
+# Other countries
+python download_weather.py --country Argentina --start-year 2020 --end-year 2022
+python download_weather.py --country Brazil --start-year 2020 --end-year 2022
 ```
 
-## Available Variables
+### 2. Process to Weekly County Data
 
-- `temp_min` - Minimum temperature (2m_temperature, 24_hour_minimum)
-- `temp_max` - Maximum temperature (2m_temperature, 24_hour_maximum)
-- `precipitation` - Precipitation flux (precipitation_flux, 24_hour_mean)  
-- `snow_lwe` - Snow liquid water equivalent (snow_thickness_lwe, 24_hour_mean)
-- `solar_radiation` - Solar radiation flux (solar_radiation_flux, 24_hour_mean)
-- `vapor_pressure` - Vapor pressure (vapour_pressure, 24_hour_mean)
+```bash
+# Process to county-level weekly averages
+python process_weather.py --country USA --start-year 2020 --end-year 2022
 
-See all available variables with: `python download_weather.py --list-variables`
+# Process to state-level instead
+python process_weather.py --country USA --admin-level 1 --start-year 2020 --end-year 2022
 
-## Features
-
-- **Country filtering**: Download data for specific countries (reduces file size from 1.86 GB / variable / year to much smaller!)
-- **Global data**: Downloads worldwide AgERA5 data when no country specified
-- **Year-based downloads**: Downloads each variable year by year for transparent progress
-- **Progress tracking**: Real-time progress bars showing current download
-- **Skip existing**: Automatically skips already downloaded files
-- **Proper logging**: Uses logging module with INFO/DEBUG levels
-- **Transparent errors**: No error suppression - all CDS API errors shown directly
-- **AgERA5 v2.0**: Uses latest version of the dataset
+# Process specific variables only
+python process_weather.py --country USA --variables temp_min temp_max --start-year 2020 --end-year 2022
+```
 
 ## Output
 
-**Global downloads** saved to `data/weather/`:
+Creates CSV files like:
 ```
-data/
-└── weather/
-    ├── 2020_temp_min.nc
-    ├── 2020_temp_max.nc
-    └── ...
+data/usa/processed/weather_2020-2021_all-vars_weekly_mean_admin2.csv
 ```
 
-**Country-specific downloads** saved to `data/{country}/weather/`:
+With columns:
 ```
-data/
-├── usa/
-│   └── weather/
-│       ├── 2020_temp_min.nc
-│       ├── 2020_temp_max.nc
-│       └── ...
-└── brazil/
-    └── weather/
-        ├── 2020_precipitation.nc
-        └── ...
+country,admin_level_1,admin_level_2,year,temp_min_week_1,...,temp_min_week_52,temp_max_week_1,...
 ```
+
+Ready for machine learning with 52 weekly columns per weather variable.

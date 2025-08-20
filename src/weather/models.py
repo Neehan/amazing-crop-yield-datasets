@@ -11,13 +11,13 @@ class WeatherVariable(Enum):
     # Basic active variables
     T2M_MIN = ("2m_temperature", "24_hour_minimum")
     T2M_MAX = ("2m_temperature", "24_hour_maximum")
-    # TEMP_MEAN = ("2m_temperature", "24_hour_mean")
     PRECIPITATION = ("precipitation_flux", "24_hour_mean")
     SNOW_LWE = ("snow_thickness_lwe", "24_hour_mean")
     SOLAR_RADIATION = ("solar_radiation_flux", "24_hour_mean")
     VAPOR_PRESSURE = ("vapour_pressure", "24_hour_mean")
 
     # All other AgERA5 variables (uncomment as needed)
+    # TEMP_MEAN = ("2m_temperature", "24_hour_mean")
     # TEMP_DAY_MAX = ("2m_temperature", "day_time_maximum")
     # TEMP_DAY_MEAN = ("2m_temperature", "day_time_mean")
     # TEMP_NIGHT_MEAN = ("2m_temperature", "night_time_mean")
@@ -53,15 +53,3 @@ class DownloadConfig:
     version: str = "2_0"
 
 
-@dataclass
-class GeoBounds:
-    """Geographic bounding box"""
-
-    min_lon: float
-    min_lat: float
-    max_lon: float
-    max_lat: float
-
-    def to_cds_area(self) -> list:
-        """Convert to CDS API area format [N, W, S, E]"""
-        return [self.max_lat, self.min_lon, self.min_lat, self.max_lon]

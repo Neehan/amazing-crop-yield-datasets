@@ -7,8 +7,8 @@ from typing import List, Optional
 from datetime import datetime
 from tqdm import tqdm
 
-from src.weather.models import WeatherVariable, DownloadConfig, GeoBounds
-from src.weather.geography import Geography
+from src.weather.models import WeatherVariable, DownloadConfig
+from src.utils.geography import Geography, GeoBounds
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class WeatherDownloader:
         for variable in variables:
             logger.info(f"Downloading {variable.key}...")
             for year in tqdm(range(start_year, end_year), desc=f"{variable.key}"):
-                file_path = output_dir / f"{year}_{variable.key}.nc"
+                file_path = output_dir / f"{year}_{variable.key}.zip"
                 
                 if file_path.exists():
                     logger.debug(f"Skipping existing file: {file_path}")
@@ -71,7 +71,10 @@ class WeatherDownloader:
                 request = self._build_cds_request(year, variable, bounds)
                 logger.debug(f"CDS API Request: {request}")
                 result = self.client.retrieve(self.config.dataset_name, request)
+                
+                # Download directly as zip file without extraction
                 result.download(str(file_path))
+                    
                 logger.info(f"Downloaded: {file_path}")
 
     def _ensure_weather_directory_exists(self, country: Optional[str] = None) -> Path:
@@ -124,4 +127,5 @@ class WeatherDownloader:
             request["area"] = bounds.to_cds_area()
             
         return request
+    
 
