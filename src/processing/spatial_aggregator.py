@@ -4,7 +4,6 @@ import logging
 from typing import List
 from pathlib import Path
 import pickle
-import hashlib
 
 import pandas as pd
 import xarray as xr
@@ -116,6 +115,11 @@ class SpatialAggregator:
             admin_df["admin_level_1_name"] = boundary["NAME_1"]
             admin_df["admin_level_2_name"] = boundary["NAME_2"]
             admin_df["admin_id"] = idx
+            
+            # Add centroid coordinates (3 decimal places)
+            centroid = boundary.geometry.centroid
+            admin_df["latitude"] = round(centroid.y, 3)
+            admin_df["longitude"] = round(centroid.x, 3)
 
             results.append(admin_df)
 
@@ -129,16 +133,7 @@ class SpatialAggregator:
     def _get_or_compute_coverage_weights(self, transform, out_shape, lats, lons):
         """Load cached coverage weights or compute them with 25 subcells per grid cell"""
         
-        # Create cache key based on boundaries and grid
-        boundaries_hash = hashlib.md5(
-            str(sorted([str(geom.bounds) for _, geom in self.boundaries['geometry'].items()])).encode()
-        ).hexdigest()[:8]
-        
-        grid_hash = hashlib.md5(
-            f"{lats.min():.6f}_{lats.max():.6f}_{lons.min():.6f}_{lons.max():.6f}_{len(lats)}_{len(lons)}".encode()
-        ).hexdigest()[:8]
-        
-        cache_file = self.cache_dir / f"coverage_weights_{boundaries_hash}_{grid_hash}.pkl"
+        cache_file = self.cache_dir / "coverage_weights_5x5_subcells.pkl"
         
         if cache_file.exists():
             logger.info(f"Loading cached coverage weights from {cache_file}")
@@ -146,7 +141,7 @@ class SpatialAggregator:
                 return pickle.load(f)
         
         logger.info("Computing coverage weights with 25 subcells per grid cell...")
-        coverage_weights = self._compute_coverage_weights(transform, out_shape, lats, lons)
+        coverage_weights = self._compute_coverage_weights(out_shape, lats, lons)
         
         # Cache the results
         logger.info(f"Caching coverage weights to {cache_file}")
@@ -155,7 +150,7 @@ class SpatialAggregator:
         
         return coverage_weights
 
-    def _compute_coverage_weights(self, transform, out_shape, lats, lons):
+    def _compute_coverage_weights(self, out_shape, lats, lons):
         """Compute coverage weights by dividing each 0.1° grid cell into 25 subcells"""
         
         all_weights = []
@@ -191,9 +186,7 @@ class SpatialAggregator:
                     
                     # Grid cell bounds
                     cell_lat_min = grid_lat - lat_step/2
-                    cell_lat_max = grid_lat + lat_step/2
                     cell_lon_min = grid_lon - lon_step/2
-                    cell_lon_max = grid_lon + lon_step/2
                     
                     covered_subcells = 0
                     total_subcells = 25

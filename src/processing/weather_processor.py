@@ -31,7 +31,7 @@ class WeatherProcessor(BaseProcessor):
             data_dir: Base data directory (defaults to ./data)
         """
         super().__init__(country, admin_level, data_dir)
-        self.spatial_aggregator = SpatialAggregator(self)
+        self.spatial_aggregator = SpatialAggregator(self, country)
         self.temporal_aggregator = TemporalAggregator()
         
     def process_weather_data(
@@ -39,7 +39,6 @@ class WeatherProcessor(BaseProcessor):
         start_year: int,
         end_year: int,
         variables: Optional[List[str]] = None,
-        spatial_aggregation: Literal["mean", "min", "max"] = "mean",
         output_format: Literal["csv", "parquet"] = "csv"
     ) -> Path:
         """Process weather data to weekly county-level aggregates
@@ -48,7 +47,6 @@ class WeatherProcessor(BaseProcessor):
             start_year: First year to process
             end_year: Last year to process (inclusive)
             variables: List of weather variable keys (defaults to all available)
-            spatial_aggregation: How to aggregate spatially within admin boundaries
             output_format: Output file format
             
         Returns:
@@ -70,7 +68,7 @@ class WeatherProcessor(BaseProcessor):
         
         for file_path in tqdm(available_files, desc="Processing weather files"):
             try:
-                result = self._process_single_file(file_path, spatial_aggregation)
+                result = self._process_single_file(file_path)
                 if result is not None:
                     all_results.append(result)
             except Exception as e:
@@ -129,7 +127,7 @@ class WeatherProcessor(BaseProcessor):
         
         return sorted(files)
     
-    def _process_single_file(self, file_path: Path, spatial_aggregation: str) -> Optional[pd.DataFrame]:
+    def _process_single_file(self, file_path: Path) -> Optional[pd.DataFrame]:
         """Process a single NetCDF weather file"""
         logger.debug(f"Processing {file_path.name}")
         
@@ -147,9 +145,7 @@ class WeatherProcessor(BaseProcessor):
             ds = xr.open_dataset(file_path)
             
             # Spatially aggregate to admin boundaries
-            admin_data = self.spatial_aggregator.aggregate_dataset(
-                ds, spatial_aggregation
-            )
+            admin_data = self.spatial_aggregator.aggregate_dataset(ds)
             
             # admin_data is already a DataFrame from spatial aggregator
             df = admin_data.copy()

@@ -53,6 +53,8 @@ class TemporalAggregator:
             "admin_level_1_name",
             "admin_level_2_name",
             "admin_id",
+            "latitude",
+            "longitude",
             "time",
             "year",
             "week_num",
@@ -71,7 +73,7 @@ class TemporalAggregator:
         ]  # Should be same for all rows in single processing run
 
         # Build grouping columns based on admin level
-        grouping_cols = ["country_name", "year", "week_num"]
+        grouping_cols = ["country_name", "latitude", "longitude", "year", "week_num"]
         if admin_level >= 1:
             grouping_cols.append("admin_level_1_name")
         if admin_level >= 2:
@@ -82,11 +84,12 @@ class TemporalAggregator:
         weekly_agg = df.groupby(grouping_cols)[value_col].progress_apply(lambda x: x.mean()).reset_index()
 
         # Build index columns for pivot
-        index_cols = ["country_name", "year"]
+        index_cols = ["country_name"]
         if admin_level >= 1:
             index_cols.append("admin_level_1_name")
         if admin_level >= 2:
             index_cols.append("admin_level_2_name")
+        index_cols.extend(["latitude", "longitude", "year"])
 
         # Pivot: rows = admin hierarchy + year, columns = week_num, values = weather value
         pivoted_table = weekly_agg.pivot_table(
@@ -108,13 +111,13 @@ class TemporalAggregator:
             if week_col not in pivoted.columns:
                 pivoted[week_col] = np.nan
 
-        # Sort columns properly - admin hierarchy + year + weeks
+        # Sort columns properly - admin hierarchy + latitude/longitude + year + weeks
         final_cols = ["country_name"]
         if admin_level >= 1:
             final_cols.append("admin_level_1_name")
         if admin_level >= 2:
             final_cols.append("admin_level_2_name")
-        final_cols.append("year")
+        final_cols.extend(["latitude", "longitude", "year"])
         final_cols.extend([f"{variable_name}_week_{i}" for i in range(1, 53)])
 
         # Rename columns to final format

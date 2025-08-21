@@ -93,7 +93,7 @@ def main():
 
     spatial_aggregator = SpatialAggregator(base_processor, args.country)
     temporal_aggregator = TemporalAggregator()
-    zip_extractor = ZipExtractor()
+    zip_extractor = ZipExtractor(processed_dir)
 
     # Process each variable separately
     for variable in variables_to_process:

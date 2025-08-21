@@ -3,8 +3,11 @@
 import logging
 from pathlib import Path
 from typing import Optional
+import urllib.request
 
 import geopandas as gpd
+import requests
+from tqdm import tqdm
 from src.utils.geography import Geography
 
 
@@ -51,16 +54,32 @@ class BaseProcessor:
         )
 
         country_code = self.country_iso
+        country_name = self.country_full_name.lower()
 
-        # GADM 4.1 direct download URL
-        gadm_url = (
-            f"https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_{country_code}.gpkg"
-        )
+        # Check for cached GADM file in country-specific gadm subdirectory
+        gadm_dir = self.data_dir / country_name / "gadm"
+        gadm_dir.mkdir(parents=True, exist_ok=True)
+        cached_file = gadm_dir / f"gadm41_{country_code}.gpkg"
 
-        logger.info(f"Loading GADM data from {gadm_url}")
+        if cached_file.exists():
+            logger.info(f"Loading cached GADM file: {cached_file}")
+        else:
+            # GADM 4.1 direct download URL
+            gadm_url = (
+                f"https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_{country_code}.gpkg"
+            )
 
-        # Load the data
-        boundaries = gpd.read_file(gadm_url, layer=f"ADM_ADM_{self.admin_level}")
+            logger.info(f"Downloading GADM data from {gadm_url}")
+            logger.info(f"Caching to: {cached_file}")
+            
+            # Download and cache the file with progress bar
+            self._download_with_progress(gadm_url, cached_file, country_code)
+            logger.info(f"Download complete: {cached_file}")
+
+        # Load boundaries from cached file
+        boundaries = gpd.read_file(cached_file, layer=f"ADM_ADM_{self.admin_level}")
+        
+        logger.info(f"Step 2: Processing {len(boundaries)} administrative boundaries...")
 
         # Ensure CRS is WGS84
         if boundaries.crs != "EPSG:4326":
@@ -82,3 +101,20 @@ class BaseProcessor:
                 return boundary_row[col]
 
         return f"Admin_{boundary_row.name}"
+
+    def _download_with_progress(self, url: str, output_path: Path, country_code: str):
+        """Download file with progress bar"""
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        
+        total_size = int(response.headers.get('content-length', 0))
+        
+        with open(output_path, 'wb') as file, tqdm(
+            total=total_size,
+            unit='B',
+            unit_scale=True,
+            desc=f"Downloading GADM {country_code}"
+        ) as pbar:
+            for chunk in response.iter_content(chunk_size=8192):
+                file.write(chunk)
+                pbar.update(len(chunk))

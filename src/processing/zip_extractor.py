@@ -15,13 +15,15 @@ logger = logging.getLogger(__name__)
 class ZipExtractor:
     """Extracts and combines daily NetCDF files from zip archives"""
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path):
         """Initialize zip extractor
 
         Args:
             cache_dir: Directory to cache extracted and combined files
         """
-        self.cache_dir = Path(cache_dir or "data/cache/extracted")
+        if cache_dir is None:
+            raise ValueError("cache_dir is required")
+        self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def extract_and_combine_year(
