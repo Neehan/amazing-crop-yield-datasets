@@ -18,6 +18,8 @@ class WeatherVariable(Enum):
     SNOW_LWE = ("snow_thickness_lwe", "24_hour_mean")
     SOLAR_RADIATION = ("solar_radiation_flux", None)
     VAPOR_PRESSURE = ("vapour_pressure", "24_hour_mean")
+    REFERENCE_ET = ("reference_evapotranspiration", None)
+    WIND_SPEED = ("10m_wind_speed", "24_hour_mean")
 
     # All other AgERA5 variables (uncomment as needed)
     # TEMP_MEAN = ("2m_temperature", "24_hour_mean")

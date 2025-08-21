@@ -4,6 +4,7 @@ import logging
 
 import pandas as pd
 import numpy as np
+from tqdm import tqdm
 
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,8 @@ class TemporalAggregator:
             grouping_cols.append("admin_level_2_name")
 
         # Group by admin, year, week and take mean
-        weekly_agg = df.groupby(grouping_cols)[value_col].mean().reset_index()
+        tqdm.pandas(desc="Converting to weekly averages")
+        weekly_agg = df.groupby(grouping_cols)[value_col].progress_apply(lambda x: x.mean()).reset_index()
 
         # Build index columns for pivot
         index_cols = ["country_name", "year"]

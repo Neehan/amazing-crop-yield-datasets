@@ -203,6 +203,7 @@ cython_debug/
 data/*
 
 *CLAUDE.md
+*.DS_Store
 
 # Marimo
 marimo/_static/
