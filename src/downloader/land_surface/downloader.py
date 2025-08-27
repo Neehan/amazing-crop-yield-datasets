@@ -84,7 +84,7 @@ class LandSurfaceDownloader(BaseDownloader):
         download_tasks = []
         for variable in variables:
             for year in range(start_year, end_year):
-                file_path = self.subdir / f"{year}_{variable.key}.nc"
+                file_path = self.subdir / f"{year}_{variable.key}.zip"
 
                 if not file_path.exists():
                     download_tasks.append(
