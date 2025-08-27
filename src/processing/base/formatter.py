@@ -50,7 +50,9 @@ class BaseFormatter(ABC):
         logger.debug("Converting time series data to pivot format")
 
         time_column = self.get_time_column_name()
-        assert time_column in data.columns, f"Time column '{time_column}' not found in data"
+        assert (
+            time_column in data.columns
+        ), f"Time column '{time_column}' not found in data"
 
         # Ensure time column is datetime
         df = data.copy()
@@ -66,22 +68,24 @@ class BaseFormatter(ABC):
         # Get the value column and variable name
         admin_cols = [
             "country_name",
-            "admin_name", 
+            "admin_name",
             "admin_id",
             "latitude",
             "longitude",
             time_column,
             "variable",
         ]
-        
+
         # Add dynamic admin level columns based on the target admin level
         for level in range(1, admin_level + 1):
             admin_cols.append(f"admin_level_{level}_name")
-        
+
         admin_cols.extend(list(grouping_columns.keys()))
 
         value_cols = [col for col in df.columns if col not in admin_cols]
-        assert len(value_cols) == 1, f"Expected 1 value column, got {len(value_cols)}: {value_cols}"
+        assert (
+            len(value_cols) == 1
+        ), f"Expected 1 value column, got {len(value_cols)}: {value_cols}"
         value_col = value_cols[0]
 
         # Get variable name for column naming
@@ -151,6 +155,11 @@ class BaseFormatter(ABC):
         final_cols.extend(["latitude", "longitude"])
         # Use original order from column_mapping instead of sorting
         final_cols.extend([col for col in expected_columns if col in pivoted.columns])
+
+        # Exclude week 53 columns if they exist
+        week_53_cols = [col for col in final_cols if col.endswith("_week_53")]
+        if week_53_cols:
+            final_cols = [col for col in final_cols if not col.endswith("_week_53")]
 
         # Reorder columns
         pivoted = pivoted[final_cols]

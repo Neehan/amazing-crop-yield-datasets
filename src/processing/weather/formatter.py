@@ -20,7 +20,12 @@ class WeatherFormatter(BaseFormatter):
     def get_time_grouping_columns(self, data: pd.DataFrame) -> dict:
         """Get the columns to group by for time aggregation"""
         time_col = data[self.get_time_column_name()]
-        return {"year": time_col.dt.year, "time_unit": time_col.dt.isocalendar().week}
+
+        # Use day-of-year based week calculation to match temporal aggregator
+        day_of_year = time_col.dt.dayofyear
+        week_number = ((day_of_year - 1) // 7) + 1
+
+        return {"year": time_col.dt.year, "time_unit": week_number}
 
     def get_pivot_column_names(self, data: pd.DataFrame) -> dict:
         """Get mapping of week numbers to output column names"""

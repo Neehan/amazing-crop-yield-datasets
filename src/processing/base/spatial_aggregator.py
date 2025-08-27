@@ -185,6 +185,7 @@ class SpatialAggregator:
     ) -> dict:
         """Load or create cropland masks for all years"""
         cropland_masks = {}
+        logger.info(f"Creating cropland masks for {len(all_years)} years...")
         for year in all_years:
             cropland_mask_file = self.cropland_mask_dir / f"cropland_mask_{year}.nc"
 
@@ -194,7 +195,6 @@ class SpatialAggregator:
                     cropland_mask_file, "cropland_mask"
                 )
             else:
-                logger.info(f"Creating cropland mask for {year}...")
                 cropland_mask = self._create_cropland_mask(lats, lons, year)
                 cropland_masks[year] = cropland_mask
                 self._cache_mask_as_netcdf(
@@ -249,46 +249,49 @@ class SpatialAggregator:
     def _process_weekly_data(
         self, var_data: xr.DataArray, admin_mask: np.ndarray, cropland_masks: dict
     ) -> List[dict]:
-        """Process weekly aggregated data"""
+        """Process weekly aggregated data with full vectorization"""
         logger.debug("Processing weekly aggregated data...")
         results = []
 
-        # Get unique years from the year coordinate
-        years = np.unique(var_data.year.values)
-
-        # Iterate over weeks (the main dimension)
-        for week_idx, week in tqdm(
-            enumerate(var_data.week.values),
-            total=len(var_data.week.values),
-            desc="Processing weeks",
+        # Group weeks by year for efficient batch processing
+        year_to_weeks = {}
+        for week_idx, (week, year) in enumerate(
+            zip(var_data.week.values, var_data.year.values)
         ):
-            week_int = int(week)
-            year_int = int(var_data.year.values[week_idx])
+            year_int = int(year)
+            if year_int not in year_to_weeks:
+                year_to_weeks[year_int] = []
+            year_to_weeks[year_int].append((week_idx, int(week), year_int))
 
+        # Process all weeks for each year in batches
+        for year_int, week_info_list in tqdm(
+            year_to_weeks.items(), desc="Processing years"
+        ):
+            # Get cropland mask once per year
             cropland_mask = cropland_masks.get(
                 year_int, np.ones_like(admin_mask, dtype=bool)
             )
-
-            # Get data slice for this week
-            data_slice = var_data.isel(week=week_idx).values
-
-            # Skip if all NaN
-            if np.isnan(data_slice).all():
-                continue
-
-            # Get combined mask for this year
             combined_mask = (admin_mask >= 0) & cropland_mask
 
-            # Create time string - just use year-01-01 + week offset, simple and clean
-            jan1 = datetime.date(year_int, 1, 1)
-            week_start = jan1 + datetime.timedelta(weeks=week_int - 1)
-            time_str = week_start.strftime("%Y-%m-%d")
+            # Extract all week indices for this year
+            week_indices = [info[0] for info in week_info_list]
+            weeks = [info[1] for info in week_info_list]
 
-            # Vectorized area-weighted averaging for all admin units at once
-            admin_results = self._compute_vectorized_averages_by_year(
-                data_slice, admin_mask, combined_mask, year_int, time_str
+            # Get all data for this year at once - shape: (num_weeks, lat, lon)
+            year_data = var_data.isel(week=week_indices).values
+
+            # Pre-compute time strings for all weeks
+            jan1 = datetime.date(year_int, 1, 1)
+            time_strings = []
+            for week_num in weeks:
+                week_start = jan1 + datetime.timedelta(weeks=week_num - 1)
+                time_strings.append(week_start.strftime("%Y-%m-%d"))
+
+            # Process all weeks for this year in batch
+            year_results = self._compute_vectorized_averages_batch(
+                year_data, admin_mask, combined_mask, year_int, time_strings
             )
-            results.extend(admin_results)
+            results.extend(year_results)
 
         return results
 
@@ -577,6 +580,109 @@ class SpatialAggregator:
                 )
 
             results.append(result_dict)
+
+        return results
+
+    def _compute_vectorized_averages_batch(
+        self,
+        year_data: np.ndarray,
+        admin_mask: np.ndarray,
+        combined_mask: np.ndarray,
+        year: int,
+        time_strings: List[str],
+    ) -> List[dict]:
+        """Compute area-weighted averages with optimized admin lookups but simple week processing"""
+        results = []
+        num_weeks, lat_size, lon_size = year_data.shape
+
+        # Pre-compute admin info cache for this year to avoid repeated pandas lookups
+        # This is the ONLY optimization that matters - avoiding repeated expensive pandas operations
+        all_admin_ids = np.unique(admin_mask[admin_mask >= 0])
+        admin_info_cache = {}
+
+        for admin_id in all_admin_ids:
+            admin_row = self.boundaries_indexed.iloc[int(admin_id)]
+            admin_name = self.base_processor.get_admin_name(admin_row)
+            centroid = self.boundary_centroids.iloc[int(admin_id)]
+
+            admin_info_cache[admin_id] = {
+                "admin_name": admin_name,
+                "latitude": centroid.y,
+                "longitude": centroid.x,
+                "admin_levels": {
+                    level: admin_row.get(f"NAME_{level}", "")
+                    for level in range(1, self.base_processor.admin_level + 1)
+                },
+            }
+
+        # Process each week individually (simple and memory-efficient)
+        for week_idx, time_str in enumerate(time_strings):
+            data_slice = year_data[week_idx]
+
+            # Skip if all NaN
+            if np.isnan(data_slice).all():
+                continue
+
+            # Get unique admin IDs that have valid data for this week
+            valid_admin_ids = np.unique(
+                admin_mask[combined_mask & ~np.isnan(data_slice)]
+            )
+            valid_admin_ids = valid_admin_ids[valid_admin_ids >= 0]
+
+            if len(valid_admin_ids) == 0:
+                continue
+
+            # Create master mask for valid data for this week
+            master_valid_mask = combined_mask & ~np.isnan(data_slice)
+
+            # Extract relevant area weights - only for valid admins (much smaller array)
+            relevant_weights = self.area_weights[:, :, valid_admin_ids]
+
+            # Apply master mask to weights and data
+            masked_weights = relevant_weights * master_valid_mask[:, :, np.newaxis]
+            masked_data = np.where(master_valid_mask, data_slice, 0)
+
+            # Vectorized computation for all admin units at once (2D operations only)
+            weighted_sums = np.nansum(
+                masked_data[:, :, np.newaxis] * masked_weights, axis=(0, 1)
+            )
+            total_weights = np.nansum(masked_weights, axis=(0, 1))
+
+            # Compute averages where weights > 0
+            valid_weight_mask = total_weights > 0
+            avg_values = np.divide(
+                weighted_sums,
+                total_weights,
+                out=np.zeros_like(weighted_sums),
+                where=valid_weight_mask,
+            )
+
+            # Create results using cached admin info (fast lookups)
+            valid_indices = np.where(valid_weight_mask)[0]
+            for idx in valid_indices:
+                admin_id = valid_admin_ids[idx]
+                avg_value = float(avg_values[idx])
+                admin_info = admin_info_cache[admin_id]
+
+                result_dict = {
+                    "time": time_str,
+                    "admin_name": admin_info["admin_name"],
+                    "admin_id": int(admin_id),
+                    "value": avg_value,
+                    "country_name": self.base_processor.country_full_name,
+                    "latitude": admin_info["latitude"],
+                    "longitude": admin_info["longitude"],
+                }
+
+                # Add dynamic admin level columns using cached data
+                result_dict.update(
+                    {
+                        f"admin_level_{level}_name": admin_info["admin_levels"][level]
+                        for level in range(1, self.base_processor.admin_level + 1)
+                    }
+                )
+
+                results.append(result_dict)
 
         return results
 

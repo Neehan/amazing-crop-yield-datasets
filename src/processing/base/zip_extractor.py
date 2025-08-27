@@ -1,4 +1,4 @@
-"""Zip extractor for combining daily NetCDF files from zip archives"""
+"""Zip extractor for extracting daily NetCDF files from zip archives into annual files"""
 
 import logging
 import zipfile
@@ -13,21 +13,21 @@ logger = logging.getLogger(__name__)
 
 
 class ZipExtractor:
-    """Extracts and combines daily NetCDF files from zip archives"""
+    """Extracts daily NetCDF files from zip archives and organizes into annual files"""
 
     def __init__(self, cache_dir: Path):
         """Initialize zip extractor
 
         Args:
-            cache_dir: Directory to cache extracted and combined files
+            cache_dir: Directory to cache extracted annual files
         """
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-    def extract_and_combine_year(
+    def extract_year_from_zip(
         self, zip_path: Path, variable: str, year: int, force_refresh: bool = False
     ) -> Path:
-        """Extract daily NetCDF files from zip and combine into annual file
+        """Extract daily NetCDF files from zip and organize into annual file
 
         Args:
             zip_path: Path to zip file containing daily NetCDF files
@@ -36,20 +36,18 @@ class ZipExtractor:
             force_refresh: If True, recreate even if cached file exists
 
         Returns:
-            Path to combined annual NetCDF file
+            Path to annual NetCDF file containing daily data
         """
         # Generate cache filename
-        cache_filename = f"{year}_{variable}_combined.nc"
+        cache_filename = f"{year}_{variable}_daily.nc"
         cache_path = self.cache_dir / cache_filename
 
         # Return cached file if it exists and we're not forcing refresh
         if cache_path.exists() and not force_refresh:
-            logger.debug(f"Using cached combined file: {cache_path}")
+            logger.debug(f"Using cached daily file: {cache_path}")
             return cache_path
 
-        logger.debug(
-            f"Extracting and combining {variable} data for {year} from {zip_path}"
-        )
+        logger.debug(f"Extracting {variable} data for {year} from {zip_path}")
 
         # Extract all NetCDF files from zip
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
@@ -69,7 +67,7 @@ class ZipExtractor:
                 for nc_file in nc_files:
                     zip_ref.extract(nc_file, temp_path)
 
-                # Load and combine all daily files
+                # Load and concatenate all daily files
                 daily_datasets = []
                 valid_files = []
 
@@ -108,18 +106,20 @@ class ZipExtractor:
                         f"No valid daily files found for year {year} in {zip_path}"
                     )
 
-                logger.debug(f"Combining {len(daily_datasets)} daily files for {year}")
+                logger.debug(
+                    f"Concatenating {len(daily_datasets)} daily files for {year}"
+                )
 
-                # Combine all datasets along time dimension
-                combined_ds = xr.concat(daily_datasets, dim="time")
+                # Concatenate all datasets along time dimension
+                annual_ds = xr.concat(daily_datasets, dim="time")
 
                 # Sort by time to ensure proper order
-                combined_ds = combined_ds.sortby("time")
+                annual_ds = annual_ds.sortby("time")
 
             # Add metadata
-            combined_ds.attrs.update(
+            annual_ds.attrs.update(
                 {
-                    "title": f"Combined daily {variable} data for {year}",
+                    "title": f"Annual daily {variable} data for {year}",
                     "source": f"Extracted from {zip_path.name}",
                     "variable": variable,
                     "year": year,
@@ -127,17 +127,17 @@ class ZipExtractor:
                 }
             )
 
-            # Save combined dataset
-            logger.debug(f"Saving combined dataset to {cache_path}")
-            combined_ds.to_netcdf(cache_path)
+            # Save annual dataset
+            logger.debug(f"Saving annual dataset to {cache_path}")
+            annual_ds.to_netcdf(cache_path)
 
             # Close datasets to free memory
             for ds in daily_datasets:
                 ds.close()
-            combined_ds.close()
+            annual_ds.close()
 
         logger.debug(
-            f"Successfully combined {len(daily_datasets)} daily files into {cache_path}"
+            f"Successfully created annual file with {len(daily_datasets)} daily records: {cache_path}"
         )
         return cache_path
 
@@ -197,7 +197,7 @@ class ZipExtractor:
             force_refresh: If True, recreate all cached files
 
         Returns:
-            List of paths to combined annual NetCDF files
+            List of paths to annual NetCDF files containing daily data
         """
         start_year, end_year = year_range
         zip_files = list(weather_dir.glob("*.zip"))
@@ -205,7 +205,7 @@ class ZipExtractor:
         if not zip_files:
             raise ValueError(f"No zip files found in {weather_dir}")
 
-        combined_files = []
+        annual_files = []
 
         # Filter zip files for the requested variables first to get accurate count
         relevant_zip_files = []
@@ -254,18 +254,18 @@ class ZipExtractor:
                 f"Processing {zip_path.name} -> year={year}, variable={variable}"
             )
 
-            combined_file = self.extract_and_combine_year(
+            annual_file = self.extract_year_from_zip(
                 zip_path, variable, year, force_refresh
             )
-            combined_files.append(combined_file)
+            annual_files.append(annual_file)
 
-        if not combined_files:
+        if not annual_files:
             raise ValueError(
                 f"No files processed from {weather_dir} for years {start_year}-{end_year-1}"
             )
 
-        logger.debug(f"Successfully processed {len(combined_files)} zip files")
-        return combined_files
+        logger.debug(f"Successfully processed {len(annual_files)} zip files")
+        return annual_files
 
     def get_available_data(self, weather_dir: Path) -> List[tuple]:
         """Get list of available (year, variable) combinations

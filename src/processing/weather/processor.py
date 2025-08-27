@@ -2,10 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import List, Optional
-import pandas as pd
-import xarray as xr
-from tqdm import tqdm
+from typing import List
 
 from src.processing.base.processor import BaseProcessor
 from src.processing.base.spatial_aggregator import SpatialAggregator
@@ -59,8 +56,9 @@ class WeatherProcessor(BaseProcessor):
         variables_to_process = self.config.variables
         if not variables_to_process:
             available_data = zip_extractor.get_available_data(weather_dir)
-            variables_to_process = list(set(var for _, var in available_data))
-            logger.debug(f"Auto-detected variables: {variables_to_process}")
+            variables_to_process = sorted(list(set(var for _, var in available_data)))
+            str_vars = "\n * ".join(variables_to_process)
+            logger.info(f"Auto-detected variables: \n * {str_vars}")
 
         output_files = []
 
@@ -68,9 +66,9 @@ class WeatherProcessor(BaseProcessor):
         for variable in variables_to_process:
             logger.info(f"Processing variable: {variable}")
 
-            # Step 1: Extract and combine zip files for this variable into annual NetCDF files
-            logger.debug(f"Extracting and combining zip files for {variable}...")
-            annual_nc_files = zip_extractor.process_all_zips(
+            # Step 1: Extract zip files for this variable into annual NetCDF files
+            logger.debug(f"Extracting zip files for {variable}...")
+            daily_nc_files = zip_extractor.process_all_zips(
                 weather_dir=weather_dir,
                 year_range=(self.config.start_year, self.config.end_year),
                 variables=[variable],
@@ -79,11 +77,11 @@ class WeatherProcessor(BaseProcessor):
 
             # Step 2: Combine annual files into single daily NetCDF (in memory, don't save)
             logger.debug(f"Combining annual files for {variable}...")
-            combined_ds = self._combine_annual_files_in_memory(annual_nc_files)
+            combined_ds = self.combine_annual_files_in_memory(daily_nc_files)
 
             # Step 3: Temporal aggregation - convert daily to weekly (in memory, don't save)
             logger.debug(f"Converting {variable} from daily to weekly...")
-            weekly_ds = self._daily_to_weekly_in_memory(combined_ds)
+            weekly_ds = self.temporal_aggregator.daily_to_weekly_dataset(combined_ds)
 
             # Step 4: Spatial aggregation - aggregate to admin boundaries
             logger.debug(f"Spatially aggregating {variable} to admin boundaries...")
@@ -102,127 +100,12 @@ class WeatherProcessor(BaseProcessor):
 
             # Save output file
             filename = f"weather_{self.config.start_year}-{self.config.end_year}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
-            output_file = processed_dir / filename
-
-            if self.config.output_format == "csv":
-                pivoted_df.to_csv(output_file, index=False)
-            elif self.config.output_format == "parquet":
-                pivoted_df.to_parquet(output_file, index=False)
-            else:
-                raise ValueError(
-                    f"Unsupported output format: {self.config.output_format}"
-                )
+            output_file = self.save_output(
+                pivoted_df, filename, self.config.output_format, processed_dir
+            )
 
             output_files.append(output_file)
             logger.debug(f"Completed processing for {variable}: {output_file}")
 
         logger.info(f"Weather processing complete. Output files: {output_files}")
         return output_files
-
-    def _combine_annual_files_in_memory(self, annual_files: List[Path]) -> xr.Dataset:
-        """Combine annual NetCDF files in memory without saving"""
-        datasets = []
-        for file_path in sorted(annual_files):
-            ds = xr.open_dataset(file_path)
-            datasets.append(ds)
-
-        # Concatenate along time dimension
-        combined_ds = xr.concat(datasets, dim="time")
-        combined_ds = combined_ds.sortby("time")
-        return combined_ds
-
-    def _daily_to_weekly_in_memory(self, dataset: xr.Dataset) -> xr.Dataset:
-        """Convert daily data to weekly averages in memory without saving"""
-        # Add week and year coordinates
-        dataset = dataset.assign_coords(
-            week=("time", dataset.time.dt.isocalendar().week.data),
-            year=("time", dataset.time.dt.year.data),
-        )
-
-        # Group by week within each year to preserve year information
-        # First group by year, then by week within each year
-        yearly_datasets = []
-        unique_years = sorted(set(dataset.year.values))
-
-        for year in unique_years:
-            year_data = dataset.where(dataset.year == year, drop=True)
-            if len(year_data.time) > 0:
-                # Group by week for this year only
-                year_weekly = year_data.groupby("week").mean("time")
-                # Add year coordinate
-                year_weekly = year_weekly.assign_coords(
-                    year=("week", [year] * len(year_weekly.week))
-                )
-                yearly_datasets.append(year_weekly)
-
-        # Combine all years back together
-        if yearly_datasets:
-            weekly_data = xr.concat(yearly_datasets, dim="week")
-        else:
-            # Fallback to original method if no data
-            groups = dataset.groupby("week")
-            weekly_data = groups.mean("time")
-            middle_idx = len(dataset.time) // 2
-            year_for_all_weeks = dataset.time.dt.year.values[middle_idx]
-            weekly_data = weekly_data.assign_coords(
-                year=("week", [year_for_all_weeks] * len(weekly_data.week))
-            )
-
-        return weekly_data
-
-    def _combine_annual_files(
-        self, annual_files: List[Path], variable: str, output_dir: Path
-    ) -> Path:
-        """Combine multiple annual NetCDF files into single daily file
-
-        Args:
-            annual_files: List of annual NetCDF file paths
-            variable: Variable name
-            output_dir: Output directory
-
-        Returns:
-            Path to combined daily NetCDF file
-        """
-        import xarray as xr
-
-        output_file = (
-            output_dir
-            / f"{self.country_full_name.lower()}_{variable}_daily_{self.config.start_year}-{self.config.end_year}.nc"
-        )
-
-        if output_file.exists():
-            logger.debug(f"Using existing combined daily file: {output_file}")
-            return output_file
-
-        logger.debug(f"Combining {len(annual_files)} annual files into {output_file}")
-
-        # Load all annual datasets
-        datasets = []
-        for file_path in sorted(annual_files):
-            ds = xr.open_dataset(file_path)
-            datasets.append(ds)
-
-        # Concatenate along time dimension
-        combined_ds = xr.concat(datasets, dim="time")
-        combined_ds = combined_ds.sortby("time")
-
-        # Add metadata
-        combined_ds.attrs.update(
-            {
-                "title": f"Combined daily {variable} data for {self.config.start_year}-{self.config.end_year}",
-                "variable": variable,
-                "country": self.country_full_name,
-                "processing_date": pd.Timestamp.now().isoformat(),
-            }
-        )
-
-        # Save combined dataset
-        combined_ds.to_netcdf(output_file)
-
-        # Close datasets
-        for ds in datasets:
-            ds.close()
-        combined_ds.close()
-
-        logger.debug(f"Successfully combined into {output_file}")
-        return output_file

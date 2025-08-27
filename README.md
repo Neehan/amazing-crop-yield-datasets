@@ -111,6 +111,98 @@ amazing-crop-yield-datasets/
 └── requirements.txt       # Python dependencies
 ```
 
+## Processing Pipeline
+
+The processing module (`src/processing/`) transforms raw gridded weather data into county-level weekly averages suitable for crop yield modeling. Here's how it works:
+
+### Data Flow Overview
+
+```
+Raw Daily Weather Data (NetCDF)
+    ↓ [Zip Extraction]
+Annual NetCDF Files
+    ↓ [Temporal Aggregation]
+Weekly NetCDF Files
+    ↓ [Spatial Aggregation]
+County-Level Weekly CSV Files
+```
+
+### 1. Zip Extraction (`ZipExtractor`)
+
+**Purpose**: Extract and organize daily weather data from zip archives
+- **Input**: Zip files containing daily NetCDF files
+- **Output**: Annual NetCDF files with daily data organized by year
+- **Optimization**: Caches extracted files to avoid repeated extraction
+
+### 2. Temporal Aggregation (`TemporalAggregator`)
+
+**Purpose**: Convert daily data to weekly averages
+- **Input**: Daily NetCDF files (365+ days per year)
+- **Output**: Weekly NetCDF files (52 weeks per year)
+- **Method**: Groups daily data by ISO week number and computes mean values
+- **Memory Efficient**: Processes data in chunks to handle large datasets
+
+### 3. Spatial Aggregation (`SpatialAggregator`)
+
+**Purpose**: Convert gridded data to administrative boundary averages
+
+#### Two-Stage Process:
+
+**Stage 1: FILTERING** - Create masks to identify which grid cells to process
+- **Admin Boundary Mask**: Maps each grid cell to its administrative unit (cached globally)
+- **Cropland Mask**: Identifies grid cells with significant cropland (cached per year using HYDE data)
+- **Combined Mask**: Only processes admin units that contain cropland
+
+**Stage 2: AVERAGING** - Compute area-weighted averages for each administrative unit
+- **25-Subcell Subdivision**: Each grid cell is divided into 5×5 subcells for accurate area weighting
+- **Vectorized Computation**: Processes all administrative units simultaneously using numpy operations
+- **Memory Optimized**: Caches admin info to avoid repeated pandas lookups
+
+#### Key Optimizations:
+
+1. **Mask Caching**: Admin boundary and cropland masks are cached as NetCDF files
+2. **Area Weighting**: Uses 25-subcell subdivision for precise area calculations
+3. **Cropland Filtering**: Only processes areas with >1% cropland coverage
+4. **Vectorized Operations**: Batch processing of all admin units per time step
+5. **Admin Info Caching**: Pre-computes admin metadata to avoid expensive pandas operations
+
+#### Technical Details:
+
+- **Grid Resolution**: Typically 0.1° × 0.1° (AgERA5 resolution)
+- **Administrative Levels**: 
+  - Level 1: States/Provinces
+  - Level 2: Counties/Departments (default)
+- **Data Sources**:
+  - **Boundaries**: GADM (Global Administrative Areas) database
+  - **Cropland**: HYDE 3.5 historical land use dataset
+- **Coordinate System**: WGS84 (EPSG:4326)
+
+### 4. Formatting (`BaseFormatter`)
+
+**Purpose**: Transform aggregated data into final CSV format
+- **Input**: Time series data with admin boundaries and values
+- **Output**: Pivot tables with admin hierarchy and weekly columns
+- **Format**: `country,admin_level_1,admin_level_2,lat,lon,year,week_1,week_2,...,week_52`
+
+### Performance Characteristics
+
+- **Memory Usage**: Processes data in chunks to handle large countries
+- **Caching Strategy**: Extensive caching of masks and intermediate results
+- **Scalability**: Handles countries from small (e.g., Uruguay) to large (e.g., USA, Brazil)
+- **Processing Time**: 
+  - Small countries: ~5-10 minutes per variable per year
+  - Large countries: ~30-60 minutes per variable per year
+
+### Weather Variables Supported
+
+The system processes various AgERA5 meteorological variables:
+- **Temperature**: `temp_min`, `temp_max`, `temp_mean`
+- **Precipitation**: `precip`
+- **Solar Radiation**: `solar_radiation`
+- **Wind**: `wind_speed`
+- **Humidity**: `dewpoint_temp`, `vapour_pressure`
+- **And more**: See `--list-variables` for complete list
+
 ## Output
 
 Creates CSV files like:

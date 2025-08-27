@@ -2,10 +2,12 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 import urllib.request
 
 import geopandas as gpd
+import pandas as pd
+import xarray as xr
 import requests
 from tqdm import tqdm
 from src.utils.geography import Geography
@@ -117,3 +119,50 @@ class BaseProcessor:
             for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
                 file.write(chunk)
                 pbar.update(len(chunk))
+
+    def save_output(
+        self, df: pd.DataFrame, filename: str, output_format: str, processed_dir: Path
+    ) -> Path:
+        """Save dataframe to appropriate output format and directory
+
+        Args:
+            df: DataFrame to save
+            filename: Name of the output file (including extension)
+            output_format: Output format ('csv' or 'parquet')
+            processed_dir: Base processed directory
+
+        Returns:
+            Path to saved file
+        """
+        # Create output directory based on format
+        if output_format == "csv":
+            output_dir = processed_dir / "csvs"
+            output_dir.mkdir(parents=True, exist_ok=True)
+            output_file = output_dir / filename
+            df.to_csv(output_file, index=False)
+        elif output_format == "parquet":
+            output_file = processed_dir / filename
+            df.to_parquet(output_file, index=False)
+        else:
+            raise ValueError(f"Unsupported output format: {output_format}")
+
+        return output_file
+
+    def combine_annual_files_in_memory(self, annual_files: List[Path]) -> xr.Dataset:
+        """Combine annual NetCDF files in memory without saving
+
+        Args:
+            annual_files: List of annual NetCDF file paths
+
+        Returns:
+            Combined xarray Dataset
+        """
+        datasets = []
+        for file_path in sorted(annual_files):
+            ds = xr.open_dataset(file_path)
+            datasets.append(ds)
+
+        # Concatenate along time dimension
+        combined_ds = xr.concat(datasets, dim="time")
+        combined_ds = combined_ds.sortby("time")
+        return combined_ds

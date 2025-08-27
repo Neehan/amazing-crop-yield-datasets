@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import xarray as xr
+import numpy as np
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
@@ -29,29 +30,61 @@ class TemporalAggregator:
         logger.debug(f"Converting daily to weekly: {input_file} -> {output_file}")
 
         with xr.open_dataset(input_file) as dataset:
-            # Add week and year coordinates
-            dataset = dataset.assign_coords(
-                week=("time", dataset.time.dt.isocalendar().week.data),
-                year=("time", dataset.time.dt.year.data),
-            )
-
-            # Group by year and week, take mean
-            # Show progress by wrapping the groupby operation
-            groups = dataset.groupby("week")
-            logger.debug(f"Computing weekly means for {len(groups)} weeks...")
-            
-            # Use tqdm to show progress on the mean calculation
-            with tqdm(total=1, desc="Computing weekly means") as pbar:
-                weekly_data = groups.mean("time")
-                pbar.update(1)
-            
-            # Add year coordinate back - use middle time point to avoid edge cases
-            middle_idx = len(dataset.time) // 2
-            year_for_all_weeks = dataset.time.dt.year.values[middle_idx]
-            weekly_data = weekly_data.assign_coords(year=("week", [year_for_all_weeks] * len(weekly_data.week)))
-
+            weekly_data = self.daily_to_weekly_dataset(dataset)
             # Save as NetCDF
             weekly_data.to_netcdf(output_file)
 
         logger.debug(f"Weekly NetCDF saved: {output_file}")
         return output_file
+
+    def daily_to_weekly_dataset(self, dataset: xr.Dataset) -> xr.Dataset:
+        """Convert daily dataset to weekly averages in memory
+
+        Args:
+            dataset: Daily xarray Dataset
+
+        Returns:
+            Weekly averaged xarray Dataset
+        """
+        # Use day-of-year based weekly grouping instead of ISO calendar weeks
+        # This ensures weeks start from day 1 and are consecutive 7-day periods
+        day_of_year = dataset.time.dt.dayofyear
+        week_number = ((day_of_year - 1) // 7) + 1  # Days 1-7→week 1, 8-14→week 2, etc.
+
+        # Add week and year coordinates
+        dataset = dataset.assign_coords(
+            week=("time", week_number.data),
+            year=("time", dataset.time.dt.year.data),
+        )
+
+        # Group by week within each year to preserve year information
+        yearly_datasets = []
+        unique_years = sorted(set(dataset.year.values))
+
+        logger.debug(f"Computing weekly means for {len(unique_years)} years...")
+
+        for year in tqdm(unique_years, desc="Processing years"):
+            year_data = dataset.where(dataset.year == year, drop=True)
+            if len(year_data.time) > 0:
+                # Group by week for this year only
+                year_weekly = year_data.groupby("week").mean("time")
+                # Add year coordinate
+                year_weekly = year_weekly.assign_coords(
+                    year=("week", [year] * len(year_weekly.week))
+                )
+                yearly_datasets.append(year_weekly)
+
+        # Combine all years back together
+        if yearly_datasets:
+            weekly_data = xr.concat(yearly_datasets, dim="week")
+        else:
+            # Fallback to original method if no data
+            groups = dataset.groupby("week")
+            weekly_data = groups.mean("time")
+            middle_idx = len(dataset.time) // 2
+            year_for_all_weeks = dataset.time.dt.year.values[middle_idx]
+            weekly_data = weekly_data.assign_coords(
+                year=("week", [year_for_all_weeks] * len(weekly_data.week))
+            )
+
+        return weekly_data
