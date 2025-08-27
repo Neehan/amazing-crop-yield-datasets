@@ -569,8 +569,8 @@ class SpatialAggregator:
                 "admin_id": int(admin_id),
                 "value": float(avg_value),
                 "country_name": self.base_processor.country_full_name,
-                "latitude": centroid.y,
-                "longitude": centroid.x,
+                "latitude": round(centroid.y, 3),
+                "longitude": round(centroid.x, 3),
             }
 
             # Add dynamic admin level columns based on target admin level
@@ -607,8 +607,8 @@ class SpatialAggregator:
 
             admin_info_cache[admin_id] = {
                 "admin_name": admin_name,
-                "latitude": centroid.y,
-                "longitude": centroid.x,
+                "latitude": round(centroid.y, 3),
+                "longitude": round(centroid.x, 3),
                 "admin_levels": {
                     level: admin_row.get(f"NAME_{level}", "")
                     for level in range(1, self.base_processor.admin_level + 1)

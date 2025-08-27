@@ -19,9 +19,13 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python -m cli <command> [args...]")
         print("\nAvailable commands:")
-        print("  download_weather  Download AgERA5 weather data")
+        print("  download_weather     Download AgERA5 weather data")
+        print("  download_land_surface Download ERA5-Land data via Google Earth Engine")
         print(
-            "  process_weather   Process weather data to county-level weekly averages"
+            "  process_weather      Process weather data to admin-level weekly averages"
+        )
+        print(
+            "  process_land_surface Process land surface data to admin-level weekly averages"
         )
         print("\nFor help on a specific command:")
         print("  python -m cli <command> --help")
@@ -35,13 +39,23 @@ def main():
         from cli.download_weather import main as download_main
 
         download_main()
+    elif command == "download_land_surface":
+        from cli.download_land_surface import main as download_ls_main
+
+        download_ls_main()
     elif command == "process_weather":
         from cli.process_weather import main as process_main
 
         process_main()
+    elif command == "process_land_surface":
+        from cli.process_land_surface import main as process_ls_main
+
+        process_ls_main()
     else:
         print(f"Unknown command: {command}")
-        print("Available commands: download_weather, process_weather")
+        print(
+            "Available commands: download_weather, download_land_surface, process_weather, process_land_surface"
+        )
         sys.exit(1)
 
 

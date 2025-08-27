@@ -1,12 +1,14 @@
 # Amazing Crop Yield Datasets (ACYD)
 
-Download and process weather data to county-level weekly averages for crop yield modeling.
+Download and process weather and land surface data to administrative-level weekly averages for crop yield modeling.
 
 ## Setup
 
 ```bash
 pip install -r requirements.txt
 ```
+
+### Weather Data Setup (CDS API)
 
 Get CDS API key:
 1. Register at https://cds.climate.copernicus.eu
@@ -16,6 +18,34 @@ Get CDS API key:
 url: https://cds.climate.copernicus.eu/api/v2
 key: YOUR_API_KEY_HERE
 ```
+
+### Land Surface Data Setup (Google Earth Engine)
+
+For land surface data (LAI, NDVI, etc.) via Google Earth Engine:
+
+1. **Create Google Cloud Project**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Note your PROJECT_ID
+
+2. **Enable Earth Engine API**:
+   - Go to [Google Earth Engine](https://earthengine.google.com/)
+   - Sign up/login with your Google account
+   - Register your cloud project for Earth Engine
+
+3. **Authenticate**:
+   ```bash
+   # Authenticate (opens browser)
+   earthengine authenticate
+   
+   # Set your project ID
+   export GOOGLE_CLOUD_PROJECT=your-project-id
+   ```
+
+4. **Test authentication**:
+   ```bash
+   python -c "import ee; ee.Initialize(); print('✅ Earth Engine initialized successfully!')"
+   ```
 
 ## Usage
 
@@ -56,7 +86,29 @@ python cli/download_weather.py --country USA --start-year 2020 --end-year 2022
 - `--list-variables`: List available weather variables
 - `--debug`: Enable debug logging
 
-### 2. Process to Weekly County Data
+### 2. Download Land Surface Data
+
+```bash
+# Download LAI data for a country (requires Google Earth Engine authentication)
+python -m cli download_land_surface --country Argentina --start-year 2020 --end-year 2022
+
+# Download specific variables
+python -m cli download_land_surface --country USA --variables lai_low lai_high --start-year 2020 --end-year 2022
+
+# Or using direct execution
+python cli/download_land_surface.py --country Argentina --start-year 2020 --end-year 2022
+```
+
+**Available options:**
+- `--country`: Country name (e.g., 'USA', 'Brazil', 'Argentina')
+- `--start-year`: Start year (default: 1979)
+- `--end-year`: End year (default: current year)
+- `--variables`: Specific variables to download (default: all available)
+- `--concurrent`: Number of concurrent downloads (default: 4)
+- `--list-variables`: List available land surface variables
+- `--debug`: Enable debug logging
+
+### 3. Process Weather Data
 
 ```bash
 # Process to county-level weekly averages (unified CLI)
@@ -80,7 +132,32 @@ python cli/process_weather.py --country USA --start-year 2020 --end-year 2022
 - `--variables`: Specific variables to process (default: all)
 - `--debug`: Enable debug logging
 
-### 3. Get Help
+### 4. Process Land Surface Data
+
+```bash
+# Process LAI data to admin-level weekly averages
+python -m cli process_land_surface argentina --start-year 2020 --end-year 2021
+
+# Process specific variables only
+python -m cli process_land_surface argentina --start-year 2020 --end-year 2021 --variables lai_low lai_high
+
+# Process to state-level instead of county-level
+python -m cli process_land_surface argentina --admin-level 1 --start-year 2020 --end-year 2021
+
+# Or using direct execution
+python cli/process_land_surface.py argentina --start-year 2020 --end-year 2021
+```
+
+**Available options:**
+- `country`: Country to process (required, positional argument)
+- `--start-year`: Start year (required)
+- `--end-year`: End year (required)
+- `--admin-level`: Administrative level (0=country, 1=state/province, 2=county/department, default: 1)
+- `--variables`: Specific variables to process (e.g., lai_low lai_high, default: all available)
+- `--output-format`: Output format (csv or parquet, default: csv)
+- `--debug`: Enable debug logging
+
+### 5. Get Help
 
 ```bash
 # General help
@@ -88,10 +165,13 @@ python -m cli
 
 # Command-specific help
 python -m cli download_weather --help
+python -m cli download_land_surface --help
 python -m cli process_weather --help
+python -m cli process_land_surface --help
 
-# List available weather variables
+# List available variables
 python -m cli download_weather --list-variables
+python -m cli download_land_surface --list-variables
 ```
 
 ## Project Structure
