@@ -81,7 +81,11 @@ class TemporalAggregator:
 
         # Group by admin, year, week and take mean
         tqdm.pandas(desc="Converting to weekly averages")
-        weekly_agg = df.groupby(grouping_cols)[value_col].progress_apply(lambda x: x.mean()).reset_index()
+        weekly_agg = (
+            df.groupby(grouping_cols)[value_col]
+            .progress_apply(lambda x: x.mean())
+            .reset_index()
+        )
 
         # Build index columns for pivot
         index_cols = ["country_name"]

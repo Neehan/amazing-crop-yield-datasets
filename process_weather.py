@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 from tqdm import tqdm
 
 from src.processing.base_processor import BaseProcessor
@@ -27,7 +28,7 @@ def main():
         required=True,
         help="Country to process (e.g., 'Argentina', 'USA', 'BRA')",
     )
-    parser.add_argument("--start-year", type=int, default=2020, help="Start year")
+    parser.add_argument("--start-year", type=int, default=1979, help="Start year")
     parser.add_argument(
         "--end-year", type=int, default=datetime.now().year, help="End year"
     )
@@ -78,7 +79,9 @@ def main():
     logger.debug(f"Found {len(zip_files)} zip files to process")
 
     # Determine variables to process
-    variables_to_process = args.variables if args.variables else [var.key for var in WeatherVariable]
+    variables_to_process = (
+        args.variables if args.variables else [var.key for var in WeatherVariable]
+    )
     logger.info(f"Processing variables: {variables_to_process}")
 
     # Save to processed directory directly (no weather subfolder)
@@ -113,13 +116,13 @@ def main():
 
         # Step 2: Spatial aggregation for this variable
         logger.info(f"Processing spatial aggregation for {variable}...")
-        combined_spatial = spatial_aggregator.aggregate_file(
-            str(combined_nc_file)
-        )
+        combined_spatial = spatial_aggregator.aggregate_file(str(combined_nc_file))
 
         # Add variable name to the result
         combined_spatial["variable"] = variable
-        logger.debug(f"Spatial aggregation complete for {variable}: {combined_spatial.shape}")
+        logger.debug(
+            f"Spatial aggregation complete for {variable}: {combined_spatial.shape}"
+        )
 
         # Step 3: Temporal aggregation to weekly averages and pivot format
         logger.info(f"Converting {variable} to weekly averages and pivot format...")
@@ -131,14 +134,18 @@ def main():
         # Missing data analysis
         total_cells = weekly_pivoted.shape[0] * weekly_pivoted.shape[1]
         missing_cells = weekly_pivoted.isnull().sum().sum()
-        missing_percentage = (missing_cells / total_cells) * 100
-        
+        missing_percentage = (
+            (missing_cells / total_cells) * 100 if total_cells > 0 else 0
+        )
+
         # Column-wise missing data
         missing_by_col = weekly_pivoted.isnull().sum()
         cols_with_missing = missing_by_col[missing_by_col > 0]
-        
+
         logger.info(f"Missing data analysis for {variable}:")
-        logger.info(f"  Total missing cells: {missing_cells:,} / {total_cells:,} ({missing_percentage:.2f}%)")
+        logger.info(
+            f"  Total missing cells: {missing_cells:,} / {total_cells:,} ({missing_percentage:.2f}%)"
+        )
         if len(cols_with_missing) > 0:
             logger.info(f"  Columns with missing data: {len(cols_with_missing)}")
             for col, count in cols_with_missing.head(10).items():
@@ -150,11 +157,15 @@ def main():
         output_filename = f"weather_{args.start_year}-{args.end_year-1}_{variable}_weekly_weighted_admin{args.admin_level}.csv"
         output_path = processed_dir / output_filename
         weekly_pivoted.to_csv(output_path, index=False)
-        
-        logger.info(f"Saved {variable} to: {output_path}")
-        logger.info(f"Dataset shape: {weekly_pivoted.shape[0]} rows, {weekly_pivoted.shape[1]} columns")
 
-    logger.info(f"Processing complete! All {len(variables_to_process)} variables saved to {processed_dir}")
+        logger.info(f"Saved {variable} to: {output_path}")
+        logger.info(
+            f"Dataset shape: {weekly_pivoted.shape[0]} rows, {weekly_pivoted.shape[1]} columns"
+        )
+
+    logger.info(
+        f"Processing complete! All {len(variables_to_process)} variables saved to {processed_dir}"
+    )
 
 
 if __name__ == "__main__":
