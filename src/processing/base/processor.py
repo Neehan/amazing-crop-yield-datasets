@@ -9,6 +9,7 @@ import geopandas as gpd
 import requests
 from tqdm import tqdm
 from src.utils.geography import Geography
+from src.constants import DOWNLOAD_CHUNK_SIZE
 
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,7 @@ logger = logging.getLogger(__name__)
 class BaseProcessor:
     """Base class for loading administrative boundaries using GADM data"""
 
-    def __init__(
-        self, country: str, admin_level: int = 2, data_dir: Optional[Path] = None
-    ):
+    def __init__(self, country: str, admin_level: int, data_dir: Optional[Path]):
         """Initialize processor
 
         Args:
@@ -65,21 +64,21 @@ class BaseProcessor:
             logger.info(f"Loading cached GADM file: {cached_file}")
         else:
             # GADM 4.1 direct download URL
-            gadm_url = (
-                f"https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_{country_code}.gpkg"
-            )
+            gadm_url = f"https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_{country_code}.gpkg"
 
             logger.info(f"Downloading GADM data from {gadm_url}")
             logger.info(f"Caching to: {cached_file}")
-            
+
             # Download and cache the file with progress bar
             self._download_with_progress(gadm_url, cached_file, country_code)
             logger.info(f"Download complete: {cached_file}")
 
         # Load boundaries from cached file
         boundaries = gpd.read_file(cached_file, layer=f"ADM_ADM_{self.admin_level}")
-        
-        logger.info(f"Step 2: Processing {len(boundaries)} administrative boundaries...")
+
+        logger.info(
+            f"Step 2: Processing {len(boundaries)} administrative boundaries..."
+        )
 
         # Ensure CRS is WGS84
         if boundaries.crs != "EPSG:4326":
@@ -106,15 +105,15 @@ class BaseProcessor:
         """Download file with progress bar"""
         response = requests.get(url, stream=True)
         response.raise_for_status()
-        
-        total_size = int(response.headers.get('content-length', 0))
-        
-        with open(output_path, 'wb') as file, tqdm(
+
+        total_size = int(response.headers.get("content-length", 0))
+
+        with open(output_path, "wb") as file, tqdm(
             total=total_size,
-            unit='B',
+            unit="B",
             unit_scale=True,
-            desc=f"Downloading GADM {country_code}"
+            desc=f"Downloading GADM {country_code}",
         ) as pbar:
-            for chunk in response.iter_content(chunk_size=8192):
+            for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
                 file.write(chunk)
                 pbar.update(len(chunk))
