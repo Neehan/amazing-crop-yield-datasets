@@ -1,79 +1,25 @@
 #!/usr/bin/env python3
 """Download AgERA5 weather data globally"""
 
-import argparse
-import logging
-import sys
-from datetime import datetime
 from pathlib import Path
+import sys
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.weather import download_weather, WeatherVariable
+from cli.base import run_downloader_cli
+from src.downloader.weather import WeatherDownloader, WeatherVariable
+from src.constants import DATA_DIR
 
 
 def main():
     """Main function to download weather data"""
-    parser = argparse.ArgumentParser(description="Download AgERA5 weather data")
-
-    parser.add_argument(
-        "--start-year", type=int, default=1979, help="Start year (inclusive)"
-    )
-    parser.add_argument(
-        "--end-year", type=int, default=datetime.now().year, help="End year (exclusive)"
-    )
-    parser.add_argument(
-        "--variables",
-        nargs="+",
-        choices=[var.key for var in WeatherVariable],
-        help="Variables to download (default: all)",
-    )
-    parser.add_argument(
-        "--list-variables", action="store_true", help="List available variables"
-    )
-    parser.add_argument(
-        "--concurrent",
-        type=int,
-        default=4,
-        help="Number of concurrent downloads (default: 4)",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging (shows CDS API requests)",
-    )
-    parser.add_argument(
-        "--country",
-        type=str,
-        help="Country name to filter data (e.g., 'USA', 'Brazil'). If not specified, downloads global data.",
-    )
-
-    args = parser.parse_args()
-
-    # Set up logging after parsing args
-    log_level = logging.DEBUG if args.debug else logging.INFO
-    logging.basicConfig(
-        level=log_level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-
-    if args.list_variables:
-        print("Available weather variables:")
-        for var in WeatherVariable:
-            print(f"  {var.key}: {var.variable} ({var.statistic})")
-        return
-
-    # Convert variable keys to enums if specified
-    variables = None
-    if args.variables:
-        variables = [var for var in WeatherVariable if var.key in args.variables]
-
-    download_weather(
-        start_year=args.start_year,
-        end_year=args.end_year,
-        variables=variables,
-        max_concurrent=args.concurrent,
-        country=args.country,
+    run_downloader_cli(
+        description="Download AgERA5 weather data",
+        variable_enum=WeatherVariable,
+        downloader_class=WeatherDownloader,
+        download_method="download_weather",
+        data_dir=DATA_DIR,
     )
 
 

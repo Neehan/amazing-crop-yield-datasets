@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.processing.weather.config import WeatherConfig
 from src.processing.weather.processor import WeatherProcessor
-from src.weather.models import WeatherVariable
+from src.downloader.weather.models import WeatherVariable
 from src.constants import (
     DEFAULT_ADMIN_LEVEL,
     DEFAULT_OUTPUT_FORMAT,

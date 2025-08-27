@@ -1,5 +1,10 @@
 """Constants used throughout the project"""
 
+from pathlib import Path
+
+# Data directory
+DATA_DIR = "data"
+
 # Administrative levels
 ADMIN_LEVEL_COUNTRY = 0
 ADMIN_LEVEL_STATE = 1
