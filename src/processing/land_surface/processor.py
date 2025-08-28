@@ -20,7 +20,9 @@ class LandSurfaceProcessor(BaseProcessor):
     def __init__(self, config: LandSurfaceConfig):
         super().__init__(config.country, config.admin_level, config.data_dir)
         self.config = config
-        self.spatial_aggregator = SpatialAggregator(self, config.country, cropland_filter=False)
+        self.spatial_aggregator = SpatialAggregator(
+            self, config.country, cropland_filter=False
+        )
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = LandSurfaceFormatter()
 
@@ -93,7 +95,7 @@ class LandSurfaceProcessor(BaseProcessor):
             )
 
             # Save output file
-            filename = f"land_surface_{self.config.start_year}-{self.config.end_year}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
+            filename = f"land_surface_{self.config.start_year}-{self.config.end_year-1}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
                 pivoted_df, filename, self.config.output_format, processed_dir
             )

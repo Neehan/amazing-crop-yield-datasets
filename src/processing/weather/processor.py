@@ -21,7 +21,9 @@ class WeatherProcessor(BaseProcessor):
         """Initialize weather processor with configuration"""
         super().__init__(config.country, config.admin_level, config.data_dir)
         self.config = config
-        self.spatial_aggregator = SpatialAggregator(self, config.country, cropland_filter=True)
+        self.spatial_aggregator = SpatialAggregator(
+            self, config.country, cropland_filter=True
+        )
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = WeatherFormatter()
 
@@ -99,7 +101,7 @@ class WeatherProcessor(BaseProcessor):
             )
 
             # Save output file
-            filename = f"weather_{self.config.start_year}-{self.config.end_year}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
+            filename = f"weather_{self.config.start_year}-{self.config.end_year-1}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
                 pivoted_df, filename, self.config.output_format, processed_dir
             )
