@@ -21,7 +21,7 @@ class WeatherProcessor(BaseProcessor):
         """Initialize weather processor with configuration"""
         super().__init__(config.country, config.admin_level, config.data_dir)
         self.config = config
-        self.spatial_aggregator = SpatialAggregator(self, config.country)
+        self.spatial_aggregator = SpatialAggregator(self, config.country, cropland_filter=True)
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = WeatherFormatter()
 

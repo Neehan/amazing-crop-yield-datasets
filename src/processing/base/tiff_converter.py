@@ -70,16 +70,22 @@ class TiffConverter:
         jan1 = pd.Timestamp(year=year, month=1, day=1)
         times = pd.date_range(jan1, periods=n_bands, freq="7D")  # matches bands
 
-        # Create clean DataArray with proper time axis
-        da = xr.DataArray(
-            data, dims=["time_band", "y", "x"], coords={"time_band": range(n_bands)}
+        # Create clean DataArray with proper spatial coordinates from transform
+        lons, lats = np.meshgrid(
+            np.linspace(transform.c, transform.c + transform.a * width, width),
+            np.linspace(transform.f, transform.f + transform.e * height, height),
         )
-        da = da.rename({"time_band": "time", "y": "lat", "x": "lon"})
-        da = da.rio.write_crs(crs).rio.write_transform(transform, inplace=True)
-        da = da.assign_coords(time=times)
-
-        # Add week and year coordinates like weather data
-        da = da.assign_coords(week=("time", range(1, 53)), year=("time", [year] * 52))
+        
+        da = xr.DataArray(
+            data, 
+            dims=["time", "lat", "lon"],
+            coords={
+                "time": times,
+                "lat": lats[:, 0],  # Take first column for lat coords
+                "lon": lons[0, :],  # Take first row for lon coords
+            }
+        )
+        da = da.rio.write_crs(crs)
 
         ds = xr.Dataset({variable: da})
         ds.to_netcdf(cache_path)

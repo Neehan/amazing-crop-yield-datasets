@@ -34,13 +34,21 @@ class SpatialAggregator:
        - Combines area weights with cropland filtering for final aggregation
     """
 
-    def __init__(self, base_processor: BaseProcessor, country_param: str):
-        """Initialize with a base processor that provides boundaries"""
+    def __init__(self, base_processor: BaseProcessor, country_param: str, cropland_filter: bool):
+        """Initialize with a base processor that provides boundaries
+        
+        Args:
+            base_processor: Provides admin boundaries and country info
+            country_param: Country parameter for processing
+            cropland_filter: If True, filter aggregation to cropland areas only.
+                           If False, aggregate over all valid data areas.
+        """
         self.base_processor = base_processor
         self.boundaries = base_processor.boundaries
         # Ensure consistent indexing for admin ID lookups
         self.boundaries_indexed = self.boundaries.reset_index(drop=True)
         self.country_param = country_param
+        self.cropland_filter = cropland_filter
 
         # Set up cache directories under processed folder
         processed_dir = Path("data") / country_param.lower() / "processed"
@@ -95,7 +103,9 @@ class SpatialAggregator:
 
         # Load or create masks
         admin_mask = self._load_or_create_admin_mask(lats, lons, lat_step, lon_step)
-        cropland_masks = self._load_or_create_cropland_masks(all_years, lats, lons)
+        cropland_masks = {}
+        if self.cropland_filter:
+            cropland_masks = self._load_or_create_cropland_masks(all_years, lats, lons)
 
         # Check if this is weekly aggregated data
         if "time" in dataset.dims:
@@ -281,11 +291,14 @@ class SpatialAggregator:
         for year_int, week_info_list in tqdm(
             year_to_weeks.items(), desc="Processing time chunks"
         ):
-            # Get cropland mask once per year
-            cropland_mask = cropland_masks.get(
-                year_int, np.ones_like(admin_mask, dtype=bool)
-            )
-            combined_mask = (admin_mask >= 0) & cropland_mask
+            # Get cropland mask once per year if filtering enabled
+            if self.cropland_filter:
+                cropland_mask = cropland_masks.get(
+                    year_int, np.ones_like(admin_mask, dtype=bool)
+                )
+                combined_mask = (admin_mask >= 0) & cropland_mask
+            else:
+                combined_mask = (admin_mask >= 0)
 
             # Extract all week indices for this year
             week_indices = [info[0] for info in week_info_list]
@@ -499,7 +512,10 @@ class SpatialAggregator:
                     continue
 
                 # Get combined mask for this year
-                combined_mask = (admin_mask >= 0) & cropland_mask
+                if self.cropland_filter:
+                    combined_mask = (admin_mask >= 0) & cropland_mask
+                else:
+                    combined_mask = (admin_mask >= 0)
 
                 # Vectorized area-weighted averaging for all admin units at once
                 admin_results = self._compute_vectorized_averages_by_year(

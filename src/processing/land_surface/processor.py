@@ -20,7 +20,7 @@ class LandSurfaceProcessor(BaseProcessor):
     def __init__(self, config: LandSurfaceConfig):
         super().__init__(config.country, config.admin_level, config.data_dir)
         self.config = config
-        self.spatial_aggregator = SpatialAggregator(self, config.country)
+        self.spatial_aggregator = SpatialAggregator(self, config.country, cropland_filter=False)
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = LandSurfaceFormatter()
 
