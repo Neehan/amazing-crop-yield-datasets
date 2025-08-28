@@ -158,7 +158,7 @@ class BaseProcessor:
             Combined xarray Dataset
         """
         datasets = []
-        for file_path in sorted(annual_files):
+        for file_path in tqdm(sorted(annual_files), desc="Processing years"):
             ds = xr.open_dataset(file_path)
             datasets.append(ds)
 

@@ -63,7 +63,7 @@ class TemporalAggregator:
 
         logger.debug(f"Computing weekly means for {len(unique_years)} years...")
 
-        for year in tqdm(unique_years, desc="Processing years"):
+        for year in tqdm(unique_years, desc="Daily to weekly conversion"):
             year_data = dataset.where(dataset.year == year, drop=True)
             if len(year_data.time) > 0:
                 # Group by week for this year only

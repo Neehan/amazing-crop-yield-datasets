@@ -161,23 +161,29 @@ class SpatialAggregator:
         self, lats: np.ndarray, lons: np.ndarray, lat_step: float, lon_step: float
     ) -> np.ndarray:
         """Load cached admin mask or create new one"""
-        admin_mask_file = self.admin_mask_dir / "admin_mask.nc"
-        area_weights_file = self.admin_mask_dir / "area_weights.npy"
+        # Include grid dimensions in cache filename to avoid conflicts
+        grid_shape = f"{len(lats)}x{len(lons)}"
+        admin_mask_file = self.admin_mask_dir / f"admin_mask_{grid_shape}.nc"
+        area_weights_file = self.admin_mask_dir / f"area_weights_{grid_shape}.npy"
 
         if admin_mask_file.exists() and area_weights_file.exists():
-            logger.info("Loading cached admin boundary mask...")
+            logger.info(f"Loading cached admin boundary mask for grid {grid_shape}...")
             admin_mask = self._load_mask_from_netcdf(admin_mask_file, "admin_mask")
             self.area_weights = np.load(area_weights_file)
             return admin_mask
         else:
-            logger.info("Creating admin boundary mask (first time for this grid)...")
+            logger.info(
+                f"Creating admin boundary mask for grid {grid_shape} (first time)..."
+            )
             admin_mask = self._create_admin_mask(lats, lons, lat_step, lon_step)
             self._cache_mask_as_netcdf(
                 admin_mask, admin_mask_file, lats, lons, "admin_mask"
             )
             # Save area weights
             np.save(area_weights_file, self.area_weights)
-            logger.info(f"Admin mask created and cached: {admin_mask.shape}")
+            logger.info(
+                f"Admin mask created and cached for grid {grid_shape}: {admin_mask.shape}"
+            )
             return admin_mask
 
     def _load_or_create_cropland_masks(
@@ -185,12 +191,18 @@ class SpatialAggregator:
     ) -> dict:
         """Load or create cropland masks for all years"""
         cropland_masks = {}
+        # Include grid dimensions in cache filename to avoid conflicts
+        grid_shape = f"{len(lats)}x{len(lons)}"
         logger.info(f"Creating cropland masks for {len(all_years)} years...")
         for year in all_years:
-            cropland_mask_file = self.cropland_mask_dir / f"cropland_mask_{year}.nc"
+            cropland_mask_file = (
+                self.cropland_mask_dir / f"cropland_mask_{year}_{grid_shape}.nc"
+            )
 
             if cropland_mask_file.exists():
-                logger.debug(f"Loading cached cropland mask for {year}...")
+                logger.debug(
+                    f"Loading cached cropland mask for {year} (grid {grid_shape})..."
+                )
                 cropland_masks[year] = self._load_mask_from_netcdf(
                     cropland_mask_file, "cropland_mask"
                 )
@@ -200,7 +212,9 @@ class SpatialAggregator:
                 self._cache_mask_as_netcdf(
                     cropland_mask, cropland_mask_file, lats, lons, "cropland_mask"
                 )
-                logger.debug(f"Cached cropland mask for {year}: {cropland_mask_file}")
+                logger.debug(
+                    f"Cached cropland mask for {year} (grid {grid_shape}): {cropland_mask_file}"
+                )
 
         return cropland_masks
 
@@ -265,7 +279,7 @@ class SpatialAggregator:
 
         # Process all weeks for each year in batches
         for year_int, week_info_list in tqdm(
-            year_to_weeks.items(), desc="Processing years"
+            year_to_weeks.items(), desc="Processing time chunks"
         ):
             # Get cropland mask once per year
             cropland_mask = cropland_masks.get(
