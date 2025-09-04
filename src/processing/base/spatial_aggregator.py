@@ -34,9 +34,11 @@ class SpatialAggregator:
        - Combines area weights with cropland filtering for final aggregation
     """
 
-    def __init__(self, base_processor: BaseProcessor, country_param: str, cropland_filter: bool):
+    def __init__(
+        self, base_processor: BaseProcessor, country_param: str, cropland_filter: bool
+    ):
         """Initialize with a base processor that provides boundaries
-        
+
         Args:
             base_processor: Provides admin boundaries and country info
             country_param: Country parameter for processing
@@ -298,7 +300,7 @@ class SpatialAggregator:
                 )
                 combined_mask = (admin_mask >= 0) & cropland_mask
             else:
-                combined_mask = (admin_mask >= 0)
+                combined_mask = admin_mask >= 0
 
             # Extract all week indices for this year
             week_indices = [info[0] for info in week_info_list]
@@ -515,7 +517,7 @@ class SpatialAggregator:
                 if self.cropland_filter:
                     combined_mask = (admin_mask >= 0) & cropland_mask
                 else:
-                    combined_mask = (admin_mask >= 0)
+                    combined_mask = admin_mask >= 0
 
                 # Vectorized area-weighted averaging for all admin units at once
                 admin_results = self._compute_vectorized_averages_by_year(

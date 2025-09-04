@@ -16,7 +16,7 @@ class SoilProperty(Enum):
     SAND = ("sand", "Proportion of sand particles")
     SILT = ("silt", "Proportion of silt particles")
     ORGANIC_CARBON = ("soc", "Soil organic carbon content")
-    WATER_CONTENT_10KPA = ("wv0010", "Volumetric water content at 10 kPa")
+    ORGANIC_CARBON_STOCK = ("ocs", "Soil organic carbon stock")
 
     def __init__(self, code: str, description: str):
         self.code = code
@@ -129,7 +129,7 @@ PROPERTY_DEPTH_MAPPING = {
         SoilDepth.DEPTH_60_100,
         SoilDepth.DEPTH_100_200,
     ],
-    SoilProperty.WATER_CONTENT_10KPA: [
+    SoilProperty.ORGANIC_CARBON_STOCK: [
         SoilDepth.DEPTH_0_5,
         SoilDepth.DEPTH_5_15,
         SoilDepth.DEPTH_15_30,

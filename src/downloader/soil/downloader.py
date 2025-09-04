@@ -4,7 +4,6 @@ import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 
-from pyproj import Transformer
 from soilgrids import SoilGrids
 from src.downloader.base import BaseDownloader
 from src.downloader.soil.models import (
@@ -13,6 +12,7 @@ from src.downloader.soil.models import (
     PROPERTY_DEPTH_MAPPING,
     MEAN_STATISTIC,
 )
+from src.constants import SOIL_RESOLUTION_DEGREES
 
 # Set up logger
 logger = logging.getLogger(__name__)
@@ -32,22 +32,12 @@ class SoilDownloader(BaseDownloader):
         super().__init__(data_dir, country, "soil", max_concurrent)
         self.soil_grids = SoilGrids()
 
-    def _convert_bounds_to_projected(self, bounds):
-        """Convert lat/lon bounds to SoilGrids projected coordinates (Homolosine)
+    def _get_geographic_bounds(self, bounds):
+        """Return bounds in geographic coordinates (WGS84)
 
-        SoilGrids uses Interrupted Goode Homolosine projection
+        No projection needed - keep in lat/lon for reasonable resolution
         """
-        # SoilGrids Homolosine CRS definition
-        homolosine_crs = 'PROJCS["Interrupted_Goode_Homolosine",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0],UNIT["Degree",0.0174532925199433]],PROJECTION["Interrupted_Goode_Homolosine"],PARAMETER["central_meridian",0],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH]]'
-
-        # Create transformer from WGS84 to Homolosine
-        transformer = Transformer.from_crs("EPSG:4326", homolosine_crs, always_xy=True)
-
-        # Transform corner points
-        west, south = transformer.transform(bounds.min_lon, bounds.min_lat)
-        east, north = transformer.transform(bounds.max_lon, bounds.max_lat)
-
-        return west, south, east, north
+        return bounds.min_lon, bounds.min_lat, bounds.max_lon, bounds.max_lat
 
     def _build_request(self, **kwargs) -> Dict[str, Any]:
         """Build SoilGrids download parameters"""
@@ -60,8 +50,14 @@ class SoilDownloader(BaseDownloader):
         service_id = soil_property.code
         coverage_id = f"{soil_property.code}_{depth.range_str}_{MEAN_STATISTIC}"
 
-        # Convert bounds to projected coordinates
-        west, south, east, north = self._convert_bounds_to_projected(bounds)
+        # Use geographic coordinates (WGS84) with configurable resolution
+        west, south, east, north = self._get_geographic_bounds(bounds)
+
+        # Calculate width and height based on resolution from constants
+        lon_range = east - west
+        lat_range = north - south
+        width = int(lon_range / SOIL_RESOLUTION_DEGREES)
+        height = int(lat_range / SOIL_RESOLUTION_DEGREES)
 
         return {
             "service_id": service_id,
@@ -70,7 +66,9 @@ class SoilDownloader(BaseDownloader):
             "south": south,
             "east": east,
             "north": north,
-            "crs": "urn:ogc:def:crs:EPSG::152160",  # SoilGrids Homolosine projection
+            "width": width,
+            "height": height,
+            "crs": "urn:ogc:def:crs:EPSG::4326",  # WGS84 geographic coordinates
             "output": str(file_path),
         }
 

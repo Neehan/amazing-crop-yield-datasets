@@ -31,18 +31,6 @@ def create_base_process_parser(description: str) -> argparse.ArgumentParser:
         help="Country to process (e.g., 'Argentina', 'USA', 'Brazil')",
     )
     parser.add_argument(
-        "--start-year",
-        type=int,
-        default=DEFAULT_START_YEAR,
-        help=f"Start year (default: {DEFAULT_START_YEAR})",
-    )
-    parser.add_argument(
-        "--end-year",
-        type=int,
-        default=datetime.now().year,
-        help="End year (default: current year)",
-    )
-    parser.add_argument(
         "--admin-level",
         type=int,
         default=DEFAULT_ADMIN_LEVEL,
@@ -95,45 +83,44 @@ def run_processor_cli(
     description: str,
     config_class: Any,
     processor_class: Any,
-    variable_enum: Optional[Any] = None,
+    add_custom_args_func: Optional[Any] = None,
+    parse_custom_args_func: Optional[Any] = None,
     success_message: str = "Processing completed successfully!",
 ):
-    """Run a processor CLI with common functionality
+    """Run a processor CLI with flexible functionality
 
     Args:
         description: CLI description
         config_class: Configuration class to instantiate
         processor_class: Processor class to instantiate
-        variable_enum: Optional enum class for variables
+        add_custom_args_func: Function to add custom arguments to parser
+        parse_custom_args_func: Function to parse custom arguments and return config kwargs
         success_message: Message to display on successful completion
     """
     parser = create_base_process_parser(description)
 
-    # Add variables argument if variable enum is provided
-    if variable_enum:
-        add_variables_argument(parser, variable_enum)
+    # Add custom arguments if function provided
+    if add_custom_args_func:
+        add_custom_args_func(parser)
 
     args = parser.parse_args()
 
     setup_logging(args.debug)
 
     try:
-        # Parse variables if enum provided
-        variables = None
-        if variable_enum and hasattr(args, "variables"):
-            variables = parse_variables(args.variables, variable_enum)
-
-        # Create configuration
+        # Base configuration
         config_kwargs = {
             "country": args.country,
-            "start_year": args.start_year,
-            "end_year": args.end_year,
             "admin_level": args.admin_level,
             "output_format": args.output_format,
             "debug": args.debug,
-            "variables": variables,  # Always pass variables (can be None)
-            "data_dir": args.data_dir,  # Always pass data_dir (can be None)
+            "data_dir": args.data_dir,
         }
+
+        # Parse custom arguments if function provided
+        if parse_custom_args_func:
+            custom_kwargs = parse_custom_args_func(args)
+            config_kwargs.update(custom_kwargs)
 
         config = config_class(**config_kwargs)
 

@@ -89,7 +89,7 @@ def main():
     parser.add_argument(
         "--concurrent",
         type=int,
-        default=3,
+        default=2,
         help="Number of concurrent downloads (default: 3)",
     )
     parser.add_argument(
