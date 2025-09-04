@@ -2,6 +2,13 @@
 
 import asyncio
 import ee
+
+from ee.imagecollection import ImageCollection
+from ee.image import Image
+from ee.featurecollection import FeatureCollection
+from ee.filter import Filter
+from ee.ee_date import Date
+
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -50,7 +57,7 @@ class LandSurfaceDownloader(BaseDownloader):
         year = kwargs["year"]
 
         ic = (
-            ee.ImageCollection(dataset)
+            ImageCollection(dataset)
             .filterDate(start_date, end_date)
             .select(variable)
             .map(lambda img: img.clip(region))
@@ -62,7 +69,7 @@ class LandSurfaceDownloader(BaseDownloader):
         weekly_images = []
         for week in range(52):
             # Calculate start and end dates for this week
-            week_start = ee.Date(start_date).advance(week * 7, "day")
+            week_start = Date(start_date).advance(week * 7, "day")
             week_end = week_start.advance(7, "day")
 
             # Filter collection to this week, select this variable, and take mean
@@ -76,7 +83,7 @@ class LandSurfaceDownloader(BaseDownloader):
             weekly_images.append(weekly_mean)
 
         # Combine all weekly means into one multi-band image
-        multi_band_image = ee.Image.cat(weekly_images).toFloat()
+        multi_band_image = Image.cat(weekly_images).toFloat()
 
         return multi_band_image
 
@@ -114,9 +121,9 @@ class LandSurfaceDownloader(BaseDownloader):
 
     def _get_country_region(self) -> Any:
         """Get country geometry from Google Earth Engine"""
-        gaul0 = ee.FeatureCollection(self.config.boundaries_dataset)
+        gaul0 = FeatureCollection(self.config.boundaries_dataset)
         country_feature = gaul0.filter(
-            ee.Filter.eq(self.config.country_property, self.country)
+            Filter.eq(self.config.country_property, self.country)
         ).first()
         return country_feature.geometry()
 

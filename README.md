@@ -7,10 +7,19 @@ Download and process weather and land surface data to administrative-level weekl
 ```bash
 pip install -r requirements.txt
 ```
+### Cropland Mask Setup
+
+Download the HYDE-3.5 cropland mask:
+```bash
+mkdir -p data/global
+wget https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF/cropland.nc -O data/global/cropland.nc
+```
 
 ### Weather Data Setup (CDS API)
 
-Get CDS API key:
+Weather data is downloaded directly from the AgERA5 reanalysis dataset. This dataset is public, freely accessible, and can be downloaded in reasonable time.
+
+To get your CDS API key:
 1. Register at https://cds.climate.copernicus.eu
 2. Accept AgERA5 license: https://cds.climate.copernicus.eu/cdsapp#!/dataset/sis-agrometeorological-indicators
 3. Add key to `~/.cdsapirc`:
@@ -21,7 +30,11 @@ key: YOUR_API_KEY_HERE
 
 ### Land Surface Data Setup (Google Earth Engine)
 
-For land surface data (LAI, NDVI, etc.) via Google Earth Engine:
+Land surface data (LAI, NDVI, etc.) comes from ERA-5 Daily Reanalysis (**not AgERA-5**). Downloading this data directly from CDS is inconvenient since each request takes over 40 minutes. Therefore, it should be downloaded from the ERA-5 mirror via Google Earth Engine.
+
+**Important Note:** Google Earth Engine API access is free only up to a limit. If you exceed the limit, your account will be charged. This is why the entire weather dataset is not downloaded through Google Earth Engine, even though it would be technically possible and faster.
+
+To set up Google Earth Engine access:
 
 1. **Create Google Cloud Project**:
    - Go to [Google Cloud Console](https://console.cloud.google.com/)
@@ -42,61 +55,39 @@ For land surface data (LAI, NDVI, etc.) via Google Earth Engine:
    export GOOGLE_CLOUD_PROJECT=your-project-id
    ```
 
-4. **Test authentication**:
-   ```bash
-   python -c "import ee; ee.Initialize(); print('✅ Earth Engine initialized successfully!')"
-   ```
 
 ## Usage
-
-### CLI Commands
-
-The project provides a unified CLI interface. You can run commands in two ways:
-
-**Option 1: Unified CLI (Recommended)**
-```bash
-python -m cli <command> [options]
-```
-
-**Option 2: Direct execution**
-```bash
-python cli/<script>.py [options]
-```
 
 ### 1. Download Weather Data
 
 ```bash
-# Download for a country (unified CLI)
-python -m cli download_weather --country USA --start-year 2020 --end-year 2022
+# Download for a country
+python -m cli.download_weather --country USA --start-year 2020 --end-year 2022
+# Note: Downloads data for years 2020 and 2021 (end-year is exclusive)
 
 # Other countries
-python -m cli download_weather --country Argentina --start-year 2020 --end-year 2022
-python -m cli download_weather --country Brazil --start-year 2020 --end-year 2022
-
-# Or using direct execution
-python cli/download_weather.py --country USA --start-year 2020 --end-year 2022
+python -m cli.download_weather --country argentina --start-year 2020 --end-year 2022
 ```
 
 **Available options:**
 - `--country`: Country name (e.g., 'USA', 'Brazil', 'Argentina')
-- `--start-year`: Start year (default: 1979)
-- `--end-year`: End year (default: current year)
+- `--start-year`: Start year inclusive (default: 1979)
+- `--end-year`: End year exclusive (default: current year)
 - `--variables`: Specific variables to download (default: all)
-- `--concurrent`: Number of concurrent downloads (default: 4)
+- `--concurrent`: Number of concurrent downloads (default: 8)
 - `--list-variables`: List available weather variables
 - `--debug`: Enable debug logging
 
 ### 2. Download Land Surface Data
 
+*Requires Google Earth Engine authentication (see setup above)*
+
 ```bash
-# Download LAI data for a country (requires Google Earth Engine authentication)
-python -m cli download_land_surface --country Argentina --start-year 2020 --end-year 2022
+# Download LAI data for a country
+python -m cli.download_land_surface --country Argentina --start-year 2020 --end-year 2022
 
 # Download specific variables
-python -m cli download_land_surface --country USA --variables lai_low lai_high --start-year 2020 --end-year 2022
-
-# Or using direct execution
-python cli/download_land_surface.py --country Argentina --start-year 2020 --end-year 2022
+python -m cli.download_land_surface --country USA --variables lai_low lai_high --start-year 2020 --end-year 2022
 ```
 
 **Available options:**
@@ -108,20 +99,39 @@ python cli/download_land_surface.py --country Argentina --start-year 2020 --end-
 - `--list-variables`: List available land surface variables
 - `--debug`: Enable debug logging
 
-### 3. Process Weather Data
+### 3. Download Soil Data
 
 ```bash
-# Process to county-level weekly averages (unified CLI)
-python -m cli process_weather --country USA --start-year 2020 --end-year 2022
+# Download soil data for a country
+python -m cli.download_soil --country USA
+
+# Download specific properties
+python -m cli.download_soil --country Argentina --properties bulk_density clay
+
+# Download specific depths
+python -m cli.download_soil --country Brazil --depths 0_5cm 5_15cm
+```
+
+**Available options:**
+- `--country`: Country name (required)
+- `--properties`: Soil properties to download (default: all available)
+- `--depths`: Depth ranges to download (default: all available for each property)
+- `--concurrent`: Number of concurrent downloads (default: 5)
+- `--list-properties`: List available soil properties
+- `--list-depths`: List available depth ranges
+- `--debug`: Enable debug logging
+
+### 4. Process Weather Data
+
+```bash
+# Process to county-level weekly averages
+python -m cli.process_weather --country USA --start-year 2020 --end-year 2022
 
 # Process to state-level instead
-python -m cli process_weather --country USA --admin-level 1 --start-year 2020 --end-year 2022
+python -m cli.process_weather --country USA --admin-level 1 --start-year 2020 --end-year 2022
 
 # Process specific variables only
-python -m cli process_weather --country USA --variables temp_min temp_max --start-year 2020 --end-year 2022
-
-# Or using direct execution
-python cli/process_weather.py --country USA --start-year 2020 --end-year 2022
+python -m cli.process_weather --country USA --variables temp_min temp_max --start-year 2020 --end-year 2022
 ```
 
 **Available options:**
@@ -136,16 +146,13 @@ python cli/process_weather.py --country USA --start-year 2020 --end-year 2022
 
 ```bash
 # Process LAI data to admin-level weekly averages
-python -m cli process_land_surface argentina --start-year 2020 --end-year 2021
+python -m cli.process_land_surface argentina --start-year 2020 --end-year 2021
 
 # Process specific variables only
-python -m cli process_land_surface argentina --start-year 2020 --end-year 2021 --variables lai_low lai_high
+python -m cli.process_land_surface argentina --start-year 2020 --end-year 2021 --variables lai_low lai_high
 
 # Process to state-level instead of county-level
-python -m cli process_land_surface argentina --admin-level 1 --start-year 2020 --end-year 2021
-
-# Or using direct execution
-python cli/process_land_surface.py argentina --start-year 2020 --end-year 2021
+python -m cli.process_land_surface argentina --admin-level 1 --start-year 2020 --end-year 2021
 ```
 
 **Available options:**
@@ -156,23 +163,6 @@ python cli/process_land_surface.py argentina --start-year 2020 --end-year 2021
 - `--variables`: Specific variables to process (e.g., lai_low lai_high, default: all available)
 - `--output-format`: Output format (csv or parquet, default: csv)
 - `--debug`: Enable debug logging
-
-### 5. Get Help
-
-```bash
-# General help
-python -m cli
-
-# Command-specific help
-python -m cli download_weather --help
-python -m cli download_land_surface --help
-python -m cli process_weather --help
-python -m cli process_land_surface --help
-
-# List available variables
-python -m cli download_weather --list-variables
-python -m cli download_land_surface --list-variables
-```
 
 ## Project Structure
 
