@@ -303,9 +303,24 @@ country,admin_level_1,admin_level_2,year,week_1,week_2,...,week_52
 
 Ready for machine learning with 52 weekly columns per weather variable.
 
+## Crop Yield Data
+
+The repository includes crop yield data processing for Argentina, with plans for additional countries.
+
+### Argentina Crop Yield Processing
+
+Process raw Argentina crop yield data from MAGyP into standardized CSV format:
+
+```bash
+# Process all Argentina crop yield data
+python -m src.crop_yield.argentina.processor
+```
+For detailed instructions, see: [`src/crop_yield/argentina/readme.md`](src/crop_yield/argentina/readme.md)
+
 ## Future Extensions
 
 The CLI structure is designed to easily accommodate additional data types:
-- `cli/download_crop.py` - Download crop yield data
-- `cli/process_crop.py` - Process crop yield data
+- Additional crop yield datasets (USA, Brazil, etc.)
+- Satellite imagery processing
+- Economic indicators
 - etc.
