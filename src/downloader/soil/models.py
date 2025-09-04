@@ -16,7 +16,7 @@ class SoilProperty(Enum):
     SAND = ("sand", "Proportion of sand particles")
     SILT = ("silt", "Proportion of silt particles")
     ORGANIC_CARBON = ("soc", "Soil organic carbon content")
-    ORGANIC_CARBON_STOCK = ("ocs", "Soil organic carbon stock")
+    # ORGANIC_CARBON_STOCK = ("ocs", "Soil organic carbon stock")
 
     def __init__(self, code: str, description: str):
         self.code = code
@@ -129,14 +129,14 @@ PROPERTY_DEPTH_MAPPING = {
         SoilDepth.DEPTH_60_100,
         SoilDepth.DEPTH_100_200,
     ],
-    SoilProperty.ORGANIC_CARBON_STOCK: [
-        SoilDepth.DEPTH_0_5,
-        SoilDepth.DEPTH_5_15,
-        SoilDepth.DEPTH_15_30,
-        SoilDepth.DEPTH_30_60,
-        SoilDepth.DEPTH_60_100,
-        SoilDepth.DEPTH_100_200,
-    ],
+    # SoilProperty.ORGANIC_CARBON_STOCK: [
+    #     SoilDepth.DEPTH_0_5,
+    #     SoilDepth.DEPTH_5_15,
+    #     SoilDepth.DEPTH_15_30,
+    #     SoilDepth.DEPTH_30_60,
+    #     SoilDepth.DEPTH_60_100,
+    #     SoilDepth.DEPTH_100_200,
+    # ],
 }
 
 # We only download mean values
