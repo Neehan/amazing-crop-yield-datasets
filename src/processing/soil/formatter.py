@@ -27,7 +27,8 @@ class SoilFormatter(BaseFormatter):
 
         def depth_sort_key(col_name):
             """Extract depth part and return sort index"""
-            depth_part = col_name.split("_", 1)[1] if "_" in col_name else col_name
+            parts = col_name.split("_")
+            depth_part = "_".join(parts[-2:]) if len(parts) >= 2 else col_name
             return depth_order.index(depth_part)
 
         return sorted(depth_cols, key=depth_sort_key)

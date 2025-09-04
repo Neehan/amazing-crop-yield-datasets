@@ -100,6 +100,9 @@ python -m cli.download_land_surface --country USA --variables lai_low lai_high -
 - `--debug`: Enable debug logging
 
 ### 3. Download Soil Data
+The soil data is from SoilGrids survey. The original survey has [11 documented soil variables](https://www.isric.org/explore/soilgrids/faq-soilgrids) at 6 depth levels. However, in practice, the OCS is only available for 0-30cm level and thus is discarded from analysis. The dataset was published in 2020 and there is no temporal component.
+
+Here is how to download soil data:
 
 ```bash
 # Download soil data for a country
@@ -164,114 +167,125 @@ python -m cli.process_land_surface argentina --admin-level 1 --start-year 2020 -
 - `--output-format`: Output format (csv or parquet, default: csv)
 - `--debug`: Enable debug logging
 
+### 5. Process Soil Data
+
+```bash
+# Process all soil properties and depths for a country (default behavior)
+python -m cli.process_soil --country USA
+
+# Process specific properties and depths
+python -m cli.process_soil --country Argentina --properties bulk_density clay --depths 0_5cm 5_15cm
+
+# Process to state-level instead of county-level
+python -m cli.process_soil --country Brazil --properties clay sand silt --depths 0_5cm 5_15cm --admin-level 1
+```
+
+**Available options:**
+- `--country`: Country to process (required)
+- `--properties`: Soil properties to process (default: all available, choices: bulk_density, cec, coarse_fragments, clay, nitrogen, organic_carbon_density, ph_h2o, sand, silt, organic_carbon)
+- `--depths`: Depth ranges to process (default: all available, choices: 0_5cm, 5_15cm, 15_30cm, 30_60cm, 60_100cm, 100_200cm)
+- `--admin-level`: Administrative level (0=country, 1=state/province, 2=county/department, default: 1)
+- `--output-format`: Output format (csv or parquet, default: csv)
+- `--debug`: Enable debug logging
+
 ## Project Structure
 
 ```
 amazing-crop-yield-datasets/
-├── cli/                     # Command-line interfaces
-│   ├── __init__.py         # CLI package initialization
-│   ├── __main__.py         # Unified CLI entry point
-│   ├── download_weather.py # Weather data download script
-│   └── process_weather.py  # Weather data processing script
-├── src/                    # Source code modules
-│   ├── weather/           # Weather data handling
-│   ├── processing/        # Data processing utilities
-│   └── utils/            # Utility functions
-├── data/                  # Data storage (created during processing)
-└── requirements.txt       # Python dependencies
+├── cli/                        # Command-line interfaces
+│   ├── __init__.py            # CLI package initialization
+│   ├── __main__.py            # Unified CLI entry point
+│   ├── download_weather.py    # Weather data download script
+│   ├── download_land_surface.py # Land surface data download script
+│   ├── download_soil.py       # Soil data download script
+│   ├── process_weather.py     # Weather data processing script
+│   ├── process_land_surface.py # Land surface data processing script
+│   └── process_soil.py        # Soil data processing script
+├── src/                       # Source code modules
+│   ├── downloader/           # Data download modules
+│   ├── processing/           # Data processing utilities
+│   └── utils/               # Utility functions
+├── data/                     # Data storage (created during processing)
+└── requirements.txt          # Python dependencies
 ```
 
 ## Processing Pipeline
 
-The processing module (`src/processing/`) transforms raw gridded weather data into county-level weekly averages suitable for crop yield modeling. Here's how it works:
+The processing pipeline follows a consistent approach across all data types: download raw data in its native format, standardize to NetCDF, then perform spatial aggregation to administrative boundaries.
+
+### General Approach
+
+1. **Download**: Data is downloaded in the format provided by the source (ZIP, TIFF, NetCDF) and saved to `data/{country}/{data_type}/` folders
+2. **Standardization**: All data is converted to NetCDF format for consistent processing
+3. **Spatial Aggregation**: Gridded data is aggregated to administrative boundary averages using different masking strategies depending on data type
 
 ### Data Flow Overview
 
 ```
-Raw Daily Weather Data (NetCDF)
-    ↓ [Zip Extraction]
-Annual NetCDF Files
-    ↓ [Temporal Aggregation]
-Weekly NetCDF Files
-    ↓ [Spatial Aggregation]
-County-Level Weekly CSV Files
+Raw Data (ZIP/TIFF/NetCDF)
+    ↓ [Format Standardization]
+NetCDF Files
+    ↓ [Spatial Aggregation with Masking]
+Administrative-Level CSV Files
 ```
 
-### 1. Zip Extraction (`ZipExtractor`)
+### Processing Strategies by Data Type
 
-**Purpose**: Extract and organize daily weather data from zip archives
-- **Input**: Zip files containing daily NetCDF files
-- **Output**: Annual NetCDF files with daily data organized by year
-- **Optimization**: Caches extracted files to avoid repeated extraction
+#### Weather Data Processing
+- **Temporal Component**: Daily → Weekly aggregation (52 weeks per year)
+- **Masking Strategy**: **Cropland mask + Admin boundaries**
+- **Rationale**: Weather data is most relevant for crop production areas, so we apply HYDE cropland masks and compute area-weighted averages only over areas with >1% cropland coverage
 
-### 2. Temporal Aggregation (`TemporalAggregator`)
+#### Land Surface Data Processing  
+- **Temporal Component**: Daily/Weekly time series
+- **Masking Strategy**: **Admin boundaries only (no cropland mask)**
+- **Rationale**: LAI and other vegetation indices vary dramatically throughout the growing season. Applying a static cropland mask would exclude many administrative areas during non-growing periods when LAI is naturally low
 
-**Purpose**: Convert daily data to weekly averages
-- **Input**: Daily NetCDF files (365+ days per year)
-- **Output**: Weekly NetCDF files (52 weeks per year)
-- **Method**: Groups daily data by ISO week number and computes mean values
-- **Memory Efficient**: Processes data in chunks to handle large datasets
+#### Soil Data Processing
+- **Temporal Component**: None (static properties)
+- **Masking Strategy**: **Admin boundaries only (no cropland mask)**
+- **Rationale**: Soil properties are inherent characteristics of the landscape. Using any specific year's cropland mask would introduce temporal bias, as soil properties are relevant for potential agricultural use regardless of current land use
 
-### 3. Spatial Aggregation (`SpatialAggregator`)
-
-**Purpose**: Convert gridded data to administrative boundary averages
+### Spatial Aggregation Process
 
 #### Two-Stage Process:
 
-**Stage 1: FILTERING** - Create masks to identify which grid cells to process
+**Stage 1: MASKING** - Determine which grid cells to include
 - **Admin Boundary Mask**: Maps each grid cell to its administrative unit (cached globally)
-- **Cropland Mask**: Identifies grid cells with significant cropland (cached per year using HYDE data)
-- **Combined Mask**: Only processes admin units that contain cropland
+- **Cropland Mask**: Applied only for weather data using HYDE 3.5 historical data
+- **Combined Processing**: Weather data uses both masks; land surface and soil use admin boundaries only
 
-**Stage 2: AVERAGING** - Compute area-weighted averages for each administrative unit
-- **25-Subcell Subdivision**: Each grid cell is divided into 5×5 subcells for accurate area weighting
-- **Vectorized Computation**: Processes all administrative units simultaneously using numpy operations
-- **Memory Optimized**: Caches admin info to avoid repeated pandas lookups
+**Stage 2: AGGREGATION** - Compute area-weighted averages
+- **25-Subcell Subdivision**: Each grid cell divided into 5×5 subcells for precise area weighting
+- **Vectorized Computation**: Processes all administrative units simultaneously
+- **Memory Optimized**: Caches admin metadata to avoid expensive pandas operations
+
+### Technical Implementation
 
 #### Key Optimizations:
-
-1. **Mask Caching**: Admin boundary and cropland masks are cached as NetCDF files
-2. **Area Weighting**: Uses 25-subcell subdivision for precise area calculations
-3. **Cropland Filtering**: Only processes areas with >1% cropland coverage
+1. **Format Standardization**: All data converted to NetCDF for consistent processing
+2. **Mask Caching**: Admin boundary and cropland masks cached as NetCDF files
+3. **Area Weighting**: 25-subcell subdivision for accurate area calculations
 4. **Vectorized Operations**: Batch processing of all admin units per time step
-5. **Admin Info Caching**: Pre-computes admin metadata to avoid expensive pandas operations
+5. **Memory Management**: Chunk-based processing for large datasets
 
-#### Technical Details:
-
-- **Grid Resolution**: Typically 0.1° × 0.1° (AgERA5 resolution)
+#### Data Specifications:
+- **Grid Resolution**: 0.1° × 0.1° (typical for AgERA5/ERA5 data)
 - **Administrative Levels**: 
   - Level 1: States/Provinces
   - Level 2: Counties/Departments (default)
 - **Data Sources**:
   - **Boundaries**: GADM (Global Administrative Areas) database
-  - **Cropland**: HYDE 3.5 historical land use dataset
+  - **Cropland**: HYDE 3.5 historical land use dataset (weather data only)
 - **Coordinate System**: WGS84 (EPSG:4326)
 
-### 4. Formatting (`BaseFormatter`)
+### Output Formatting
 
 **Purpose**: Transform aggregated data into final CSV format
-- **Input**: Time series data with admin boundaries and values
-- **Output**: Pivot tables with admin hierarchy and weekly columns
-- **Format**: `country,admin_level_1,admin_level_2,lat,lon,year,week_1,week_2,...,week_52`
+- **Weather**: Time series with weekly columns: `country,admin_level_1,admin_level_2,year,week_1,week_2,...,week_52`
+- **Land Surface**: Time series with weekly/daily columns depending on temporal resolution
+- **Soil**: Static values: `country,admin_level_1,admin_level_2,property_depth_value`
 
-### Performance Characteristics
-
-- **Memory Usage**: Processes data in chunks to handle large countries
-- **Caching Strategy**: Extensive caching of masks and intermediate results
-- **Scalability**: Handles countries from small (e.g., Uruguay) to large (e.g., USA, Brazil)
-- **Processing Time**: 
-  - Small countries: ~5-10 minutes per variable per year
-  - Large countries: ~30-60 minutes per variable per year
-
-### Weather Variables Supported
-
-The system processes various AgERA5 meteorological variables:
-- **Temperature**: `temp_min`, `temp_max`, `temp_mean`
-- **Precipitation**: `precip`
-- **Solar Radiation**: `solar_radiation`
-- **Wind**: `wind_speed`
-- **Humidity**: `dewpoint_temp`, `vapour_pressure`
-- **And more**: See `--list-variables` for complete list
 
 ## Output
 
@@ -292,7 +306,6 @@ Ready for machine learning with 52 weekly columns per weather variable.
 ## Future Extensions
 
 The CLI structure is designed to easily accommodate additional data types:
-- `cli/download_soil.py` - Download soil data
-- `cli/process_soil.py` - Process soil data
 - `cli/download_crop.py` - Download crop yield data
+- `cli/process_crop.py` - Process crop yield data
 - etc.

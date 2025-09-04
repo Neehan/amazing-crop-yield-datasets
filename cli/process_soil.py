@@ -18,23 +18,28 @@ def add_soil_arguments(parser):
         "--properties",
         nargs="+",
         choices=[prop.key for prop in SoilProperty],
-        required=True,
-        help="Soil properties to process",
+        help="Soil properties to process (default: all)",
     )
     parser.add_argument(
         "--depths",
         nargs="+",
         choices=[depth.key for depth in SoilDepth],
-        required=True,
-        help="Depth ranges to process",
+        help="Depth ranges to process (default: all)",
     )
 
 
 def parse_soil_arguments(args):
     """Parse soil-specific arguments and return config kwargs"""
+    # Default to all properties if none specified
+    properties = (
+        args.properties if args.properties else [prop.key for prop in SoilProperty]
+    )
+    # Default to all depths if none specified
+    depths = args.depths if args.depths else [depth.key for depth in SoilDepth]
+
     return {
-        "properties": args.properties,
-        "depths": args.depths,
+        "properties": properties,
+        "depths": depths,
     }
 
 
