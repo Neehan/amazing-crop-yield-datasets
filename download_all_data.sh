@@ -35,7 +35,7 @@ python -m cli.download_weather --country "$COUNTRY" --start-year $START_YEAR --e
 echo "Starting land surface data download for $COUNTRY..."
 python -m cli.download_land_surface --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --concurrent 8 --variables lai_low lai_high
 # ndvi doesnt exist between 1979-81 so need to download separately
-python -m cli.download_land_surface --country "$COUNTRY" --start-year 1979 --end-year 1982 --concurrent 8 --variables ndvi
+python -m cli.download_land_surface --country "$COUNTRY" --start-year 1982 --end-year $END_YEAR --concurrent 8 --variables ndvi
 
 # Download soil data (no temporal component)
 echo "Starting soil data download for $COUNTRY..."

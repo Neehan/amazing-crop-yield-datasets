@@ -3,7 +3,6 @@
 import logging
 from typing import List, Optional, Tuple
 from pathlib import Path
-import cftime
 import datetime
 
 import pandas as pd
@@ -15,15 +14,15 @@ import rasterio.features
 from rasterio.transform import from_bounds
 
 from src.processing.base.processor import BaseProcessor
-from src.constants import CHUNK_SIZE_TIME_PROCESSING, SUBCELL_SIZE
+from src.constants import SUBCELL_SIZE
 
 logger = logging.getLogger(__name__)
 
 
 class SpatialAggregator:
-    """Aggregates spatial data to administrative boundaries with cropland filtering
+    """Aggregates weekly spatial data to administrative boundaries with cropland filtering
 
-    Two-stage process:
+    Optimized for weekly aggregated data only. Two-stage process:
     1. FILTERING: Create masks to identify which grid cells to process
        - Admin boundary mask: Which admin unit each grid cell belongs to (cached globally)
        - Cropland mask: Which grid cells have cropland (cached per year)
@@ -32,6 +31,7 @@ class SpatialAggregator:
     2. AVERAGING: For each admin unit, compute area-weighted average
        - Uses SUBCELL_SIZE-subcell subdivision per grid cell for proper area weighting
        - Combines area weights with cropland filtering for final aggregation
+       - Results are cached to avoid recomputation
     """
 
     def __init__(
@@ -83,21 +83,52 @@ class SpatialAggregator:
             drop=True
         )
 
+        # Pre-compute admin info arrays for fast access (optimization #1)
+        self._precompute_admin_arrays()
+
         logger.info(
             f"SpatialAggregator initialized for {country_param} with {len(self.boundaries_indexed)} admin boundaries"
         )
 
-    def aggregate_dataset(self, dataset: xr.Dataset) -> pd.DataFrame:
+    def aggregate_dataset(
+        self, dataset: xr.Dataset, variable_name: str
+    ) -> pd.DataFrame:
         """Aggregate xarray dataset to administrative boundaries using weighted averaging
 
         Args:
-            dataset: xarray Dataset with spatial data (daily or weekly weather data)
+            dataset: xarray Dataset with weekly aggregated spatial data
+            variable_name: Name of variable for checkpointing
 
         Returns:
             DataFrame with time, admin_name, admin_id, value columns
         """
-        # Extract dataset info
+        # Check for cached results year by year
         all_years = self._extract_all_years_from_dataset(dataset)
+
+        # Check if all years are cached
+        all_cached = True
+        cached_dfs = []
+
+        for year in all_years:
+            cache_file = self._get_cache_filename(variable_name, year)
+            if cache_file.exists():
+                logger.debug(f"Loading cached result for {variable_name} {year}")
+                cached_dfs.append(pd.read_csv(cache_file))
+            else:
+                all_cached = False
+                break
+
+        if all_cached:
+            logger.info(
+                f"Loading cached spatial aggregation results for {variable_name} ({len(all_years)} years)"
+            )
+            return pd.concat(cached_dfs, ignore_index=True)
+
+        logger.info(
+            f"Computing spatial aggregation for {variable_name} ({len(all_years)} years, will cache by year)"
+        )
+
+        # Extract dataset info
         var_data = self._get_main_data_variable(dataset)
         lats, lons, lat_step, lon_step = self._extract_coordinates(var_data)
 
@@ -109,23 +140,31 @@ class SpatialAggregator:
         if self.cropland_filter:
             cropland_masks = self._load_or_create_cropland_masks(all_years, lats, lons)
 
-        # Check if this is weekly aggregated data
-        if "time" in dataset.dims:
-            # Daily data processing
-            results = self._process_time_series(
-                var_data, admin_mask, cropland_masks, lats, lons, lat_step, lon_step
-            )
-        elif "week" in dataset.dims:
-            # Weekly aggregated data processing
+        # Process weekly aggregated data
+        if "week" in dataset.dims:
             results = self._process_weekly_data(var_data, admin_mask, cropland_masks)
         else:
             raise ValueError(
-                "Dataset must have either 'time' or 'week' dimension for processing"
+                "Dataset must have 'week' dimension for processing. Daily data should be temporally aggregated first."
             )
 
         df = pd.DataFrame(results)
+
+        # Cache the results year by year
+        for year in all_years:
+            year_df = df[df["time"].str.startswith(str(year))]
+            if not year_df.empty:
+                cache_file = self._get_cache_filename(variable_name, year)
+                year_df.to_csv(cache_file, index=False)
+                logger.debug(f"Cached {year} results to {cache_file}")
+
         logger.debug(f"Spatial aggregation complete: {len(df)} records generated")
         return df
+
+    def _get_cache_filename(self, variable_name: str, year: int) -> Path:
+        """Generate cache filename for spatial aggregation results"""
+        filename = f"{year}_{variable_name}_weekly_weighted_admin{self.base_processor.admin_level}.csv"
+        return self.weather_processed_dir / filename
 
     def _get_main_data_variable(self, dataset: xr.Dataset) -> xr.DataArray:
         """Extract the main data variable from dataset"""
@@ -230,48 +269,6 @@ class SpatialAggregator:
 
         return cropland_masks
 
-    def _process_time_series(
-        self,
-        var_data: xr.DataArray,
-        admin_mask: np.ndarray,
-        cropland_masks: dict,
-        lats: np.ndarray,
-        lons: np.ndarray,
-        lat_step: float,
-        lon_step: float,
-    ) -> List[dict]:
-        """Process time series data in chunks"""
-        logger.info("Computing area-weighted averages with filtering...")
-
-        results = []
-        time_values = var_data.time.values
-
-        # Process in chunks to manage memory
-        total_chunks = (
-            len(time_values) + CHUNK_SIZE_TIME_PROCESSING - 1
-        ) // CHUNK_SIZE_TIME_PROCESSING
-
-        for chunk_idx in tqdm(range(total_chunks), desc="Processing time chunks"):
-            start_idx = chunk_idx * CHUNK_SIZE_TIME_PROCESSING
-            end_idx = min(start_idx + CHUNK_SIZE_TIME_PROCESSING, len(time_values))
-
-            chunk_times = time_values[start_idx:end_idx]
-            chunk_data = var_data.isel(time=slice(start_idx, end_idx))
-
-            chunk_results = self._process_time_chunk(
-                chunk_data,
-                chunk_times,
-                admin_mask,
-                cropland_masks,
-                lats,
-                lons,
-                lat_step,
-                lon_step,
-            )
-            results.extend(chunk_results)
-
-        return results
-
     def _process_weekly_data(
         self, var_data: xr.DataArray, admin_mask: np.ndarray, cropland_masks: dict
     ) -> List[dict]:
@@ -325,20 +322,8 @@ class SpatialAggregator:
         return results
 
     def _extract_all_years_from_dataset(self, dataset: xr.Dataset) -> List[int]:
-        """Extract all unique years from the dataset"""
-        if "time" in dataset.dims:
-            # Daily data with time dimension
-            time_values = dataset.time.values
-            years = set()
-            for time_val in time_values:
-                if isinstance(time_val, cftime.datetime):
-                    years.add(time_val.year)
-                elif hasattr(time_val, "year"):
-                    years.add(time_val.year)
-                else:
-                    dt = pd.to_datetime(str(time_val))
-                    years.add(dt.year)
-        elif "year" in dataset.dims:
+        """Extract all unique years from weekly aggregated dataset"""
+        if "year" in dataset.dims:
             # Weekly aggregated data with year dimension
             years = set(dataset.year.values)
         elif "year" in dataset.coords:
@@ -346,10 +331,36 @@ class SpatialAggregator:
             years = set(np.unique(dataset.year.values))
         else:
             raise ValueError(
-                "Dataset must have either 'time' dimension or 'year' dimension/coordinate"
+                "Dataset must have 'year' dimension or coordinate for weekly aggregated data"
             )
 
         return sorted(list(years))
+
+    def _precompute_admin_arrays(self):
+        """Pre-compute admin info as numpy arrays for fast access (optimization #1)"""
+        n_admin = len(self.boundaries_indexed)
+        
+        # Pre-allocate arrays
+        self.admin_names = np.empty(n_admin, dtype=object)
+        self.admin_lats = np.empty(n_admin, dtype=np.float32)
+        self.admin_lons = np.empty(n_admin, dtype=np.float32)
+        
+        # Pre-compute admin level names arrays
+        self.admin_level_names = {}
+        for level in range(1, self.base_processor.admin_level + 1):
+            self.admin_level_names[level] = np.empty(n_admin, dtype=object)
+        
+        # Fill arrays once
+        for admin_id in range(n_admin):
+            admin_row = self.boundaries_indexed.iloc[admin_id]
+            centroid = self.boundary_centroids.iloc[admin_id]
+            
+            self.admin_names[admin_id] = self.base_processor.get_admin_name(admin_row)
+            self.admin_lats[admin_id] = round(centroid.y, 3)
+            self.admin_lons[admin_id] = round(centroid.x, 3)
+            
+            for level in range(1, self.base_processor.admin_level + 1):
+                self.admin_level_names[level][admin_id] = admin_row.get(f"NAME_{level}", "")
 
     def _load_cropland_data(self):
         """Load HYDE cropland data"""
@@ -473,149 +484,6 @@ class SpatialAggregator:
 
         return cropland_mask
 
-    def _process_time_chunk(
-        self,
-        chunk_data: xr.DataArray,
-        chunk_times: np.ndarray,
-        admin_mask: np.ndarray,
-        cropland_masks: dict,
-        lats: np.ndarray,
-        lons: np.ndarray,
-        lat_step: float,
-        lon_step: float,
-    ) -> List[dict]:
-        """Process a chunk of time data with per-year optimization"""
-        results = []
-
-        # Group times by year for efficient processing
-        year_groups = {}
-        time_year_mapping = {}
-
-        for time_idx, time_val in enumerate(chunk_times):
-            year, time_str = self._extract_year_and_time_str(time_val)
-            time_year_mapping[time_idx] = (year, time_str)
-
-            if year not in year_groups:
-                year_groups[year] = []
-            year_groups[year].append(time_idx)
-
-        # Process per year instead of per admin
-        for year, time_indices in year_groups.items():
-            cropland_mask = cropland_masks.get(
-                year, np.ones_like(admin_mask, dtype=bool)
-            )
-
-            # Process all time steps for this year at once
-            for time_idx in time_indices:
-                year, time_str = time_year_mapping[time_idx]
-                data_slice = chunk_data.isel(time=time_idx).values
-
-                # Skip if all NaN
-                if np.isnan(data_slice).all():
-                    continue
-
-                # Get combined mask for this year
-                if self.cropland_filter:
-                    combined_mask = (admin_mask >= 0) & cropland_mask
-                else:
-                    combined_mask = admin_mask >= 0
-
-                # Vectorized area-weighted averaging for all admin units at once
-                admin_results = self._compute_vectorized_averages_by_year(
-                    data_slice, admin_mask, combined_mask, year, time_str
-                )
-                results.extend(admin_results)
-
-        return results
-
-    def _extract_year_and_time_str(self, time_val) -> Tuple[int, str]:
-        """Extract year and formatted time string from time value"""
-        if isinstance(time_val, cftime.datetime):
-            return (
-                time_val.year,
-                f"{time_val.year}-{time_val.month:02d}-{time_val.day:02d}",
-            )
-        elif hasattr(time_val, "year"):
-            return time_val.year, str(time_val)[:10]
-        else:
-            dt = pd.to_datetime(str(time_val))
-            return dt.year, dt.strftime("%Y-%m-%d")
-
-    def _compute_vectorized_averages_by_year(
-        self,
-        data_slice: np.ndarray,
-        admin_mask: np.ndarray,
-        combined_mask: np.ndarray,
-        year: int,
-        time_str: str,
-    ) -> List[dict]:
-        """Compute area-weighted averages for all admin units using full vectorization"""
-        results = []
-
-        # Get unique admin IDs that have valid data
-        valid_admin_ids = np.unique(admin_mask[combined_mask & ~np.isnan(data_slice)])
-        valid_admin_ids = valid_admin_ids[valid_admin_ids >= 0]  # Remove -1 (no admin)
-
-        if len(valid_admin_ids) == 0:
-            return results
-
-        # Create master mask for valid data
-        master_valid_mask = combined_mask & ~np.isnan(data_slice)
-
-        # Extract all relevant area weights for valid admin IDs
-        relevant_weights = self.area_weights[
-            :, :, valid_admin_ids
-        ]  # Shape: (lat, lon, num_valid_admins)
-
-        # Apply master mask to weights and data
-        masked_weights = relevant_weights * master_valid_mask[:, :, np.newaxis]
-        masked_data = np.where(master_valid_mask, data_slice, 0)
-
-        # Vectorized computation for all admin units at once
-        # Sum over spatial dimensions to get totals per admin
-        weighted_sums = np.nansum(
-            masked_data[:, :, np.newaxis] * masked_weights, axis=(0, 1)
-        )  # Shape: (num_valid_admins,)
-        total_weights = np.nansum(
-            masked_weights, axis=(0, 1)
-        )  # Shape: (num_valid_admins,)
-
-        # Compute averages where weights > 0
-        valid_weight_mask = total_weights > 0
-        avg_values = weighted_sums / np.where(total_weights > 0, total_weights, 1)
-
-        # Create results for admin units with valid averages
-        valid_indices = np.where(valid_weight_mask)[0]
-
-        for idx in valid_indices:
-            admin_id = valid_admin_ids[idx]
-            avg_value = avg_values[idx]
-
-            # Get admin info using precomputed centroids
-            admin_row = self.boundaries_indexed.iloc[int(admin_id)]
-            admin_name = self.base_processor.get_admin_name(admin_row)
-            centroid = self.boundary_centroids.iloc[int(admin_id)]
-
-            result_dict = {
-                "time": time_str,
-                "admin_name": admin_name,
-                "admin_id": int(admin_id),
-                "value": float(avg_value),
-                "country_name": self.base_processor.country_full_name,
-                "latitude": round(centroid.y, 3),
-                "longitude": round(centroid.x, 3),
-            }
-
-            # Add dynamic admin level columns based on target admin level
-            for level in range(1, self.base_processor.admin_level + 1):
-                result_dict[f"admin_level_{level}_name"] = admin_row.get(
-                    f"NAME_{level}", ""
-                )
-
-            results.append(result_dict)
-
-        return results
-
     def _compute_vectorized_averages_batch(
         self,
         year_data: np.ndarray,
@@ -624,31 +492,21 @@ class SpatialAggregator:
         year: int,
         time_strings: List[str],
     ) -> List[dict]:
-        """Compute area-weighted averages with optimized admin lookups but simple week processing"""
-        results = []
-        num_weeks, lat_size, lon_size = year_data.shape
+        """Compute area-weighted averages with optimized week processing (optimized #1 & #2)"""
+        num_weeks = year_data.shape[0]
 
-        # Pre-compute admin info cache for this year to avoid repeated pandas lookups
-        # This is the ONLY optimization that matters - avoiding repeated expensive pandas operations
-        all_admin_ids = np.unique(admin_mask[admin_mask >= 0])
-        admin_info_cache = {}
+        # Pre-extract area weights for all admin units (avoid repeated indexing)
+        all_possible_admin_ids = np.unique(admin_mask[admin_mask >= 0])
+        preloaded_weights = self.area_weights[:, :, all_possible_admin_ids]
 
-        for admin_id in all_admin_ids:
-            admin_row = self.boundaries_indexed.iloc[int(admin_id)]
-            admin_name = self.base_processor.get_admin_name(admin_row)
-            centroid = self.boundary_centroids.iloc[int(admin_id)]
+        # Pre-allocate result arrays (optimization #2)
+        max_results = num_weeks * len(all_possible_admin_ids)  # Upper bound
+        result_times = np.empty(max_results, dtype=object)
+        result_admin_ids = np.empty(max_results, dtype=np.int32)
+        result_values = np.empty(max_results, dtype=np.float32)
+        result_count = 0
 
-            admin_info_cache[admin_id] = {
-                "admin_name": admin_name,
-                "latitude": round(centroid.y, 3),
-                "longitude": round(centroid.x, 3),
-                "admin_levels": {
-                    level: admin_row.get(f"NAME_{level}", "")
-                    for level in range(1, self.base_processor.admin_level + 1)
-                },
-            }
-
-        # Process each week individually (simple and memory-efficient)
+        # Process each week with pre-extracted weights
         for week_idx, time_str in enumerate(time_strings):
             data_slice = year_data[week_idx]
 
@@ -668,18 +526,23 @@ class SpatialAggregator:
             # Create master mask for valid data for this week
             master_valid_mask = combined_mask & ~np.isnan(data_slice)
 
-            # Extract relevant area weights - only for valid admins (much smaller array)
-            relevant_weights = self.area_weights[:, :, valid_admin_ids]
+            # Map valid admin IDs to preloaded indices
+            valid_indices_in_preloaded = np.searchsorted(
+                all_possible_admin_ids, valid_admin_ids
+            )
+            relevant_weights = preloaded_weights[:, :, valid_indices_in_preloaded]
 
-            # Apply master mask to weights and data
-            masked_weights = relevant_weights * master_valid_mask[:, :, np.newaxis]
+            # Memory-efficient computation avoiding ALL large 3D intermediate arrays
             masked_data = np.where(master_valid_mask, data_slice, 0)
 
-            # Vectorized computation for all admin units at once (2D operations only)
-            weighted_sums = np.nansum(
-                masked_data[:, :, np.newaxis] * masked_weights, axis=(0, 1)
+            # Use einsum with mask to avoid creating masked_weights entirely
+            # This computes weighted_sums and total_weights without any 3D arrays
+            weighted_sums = np.einsum(
+                "ij,ijk,ij->k", masked_data, relevant_weights, master_valid_mask
             )
-            total_weights = np.nansum(masked_weights, axis=(0, 1))
+            total_weights = np.einsum(
+                "ij,ijk->k", master_valid_mask.astype(np.float32), relevant_weights
+            )
 
             # Compute averages where weights > 0
             valid_weight_mask = total_weights > 0
@@ -690,38 +553,43 @@ class SpatialAggregator:
                 where=valid_weight_mask,
             )
 
-            # Create results using cached admin info (fast lookups)
+            # Store results in pre-allocated arrays
             valid_indices = np.where(valid_weight_mask)[0]
-            for idx in valid_indices:
-                admin_id = valid_admin_ids[idx]
-                avg_value = float(avg_values[idx])
-                admin_info = admin_info_cache[admin_id]
+            n_valid = len(valid_indices)
+            
+            # Batch fill arrays
+            end_idx = result_count + n_valid
+            result_times[result_count:end_idx] = time_str
+            result_admin_ids[result_count:end_idx] = valid_admin_ids[valid_indices]
+            result_values[result_count:end_idx] = avg_values[valid_indices]
+            result_count = end_idx
 
-                result_dict = {
-                    "time": time_str,
-                    "admin_name": admin_info["admin_name"],
-                    "admin_id": int(admin_id),
-                    "value": avg_value,
-                    "country_name": self.base_processor.country_full_name,
-                    "latitude": admin_info["latitude"],
-                    "longitude": admin_info["longitude"],
-                }
+        # Convert pre-allocated arrays to list of dicts (optimization #1: use cached arrays)
+        results = []
+        for i in range(result_count):
+            admin_id = int(result_admin_ids[i])
+            
+            result_dict = {
+                "time": result_times[i],
+                "admin_name": self.admin_names[admin_id],
+                "admin_id": admin_id,
+                "value": float(result_values[i]),
+                "country_name": self.base_processor.country_full_name,
+                "latitude": float(self.admin_lats[admin_id]),
+                "longitude": float(self.admin_lons[admin_id]),
+            }
 
-                # Add dynamic admin level columns using cached data
-                result_dict.update(
-                    {
-                        f"admin_level_{level}_name": admin_info["admin_levels"][level]
-                        for level in range(1, self.base_processor.admin_level + 1)
-                    }
-                )
+            # Add admin level names using cached arrays
+            for level in range(1, self.base_processor.admin_level + 1):
+                result_dict[f"admin_level_{level}_name"] = self.admin_level_names[level][admin_id]
 
-                results.append(result_dict)
+            results.append(result_dict)
 
         return results
 
-    def aggregate_file(self, file_path: str) -> pd.DataFrame:
+    def aggregate_file(self, file_path: str, variable_name: str) -> pd.DataFrame:
         """Aggregate a single NetCDF file to administrative boundaries"""
         logger.debug(f"Aggregating file: {file_path}")
 
         with xr.open_dataset(file_path) as dataset:
-            return self.aggregate_dataset(dataset)
+            return self.aggregate_dataset(dataset, variable_name)

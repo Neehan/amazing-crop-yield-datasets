@@ -85,7 +85,9 @@ class LandSurfaceProcessor(BaseProcessor):
             combined_ds = self.combine_annual_files_in_memory(weekly_nc_files)
 
             # Step 3: Spatial aggregation to admin boundaries
-            aggregated_df = self.spatial_aggregator.aggregate_dataset(combined_ds)
+            aggregated_df = self.spatial_aggregator.aggregate_dataset(
+                combined_ds, variable
+            )
 
             # Step 4: Format and save output
             aggregated_df["variable"] = variable

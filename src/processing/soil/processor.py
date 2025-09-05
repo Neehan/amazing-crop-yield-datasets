@@ -77,7 +77,9 @@ class SoilProcessor(BaseProcessor):
                 depth_ds = depth_ds.assign_coords(time=[pd.Timestamp("2020-01-01")])
 
                 # Spatial aggregation
-                aggregated_df = self.spatial_aggregator.aggregate_dataset(depth_ds)
+                aggregated_df = self.spatial_aggregator.aggregate_dataset(
+                    depth_ds, f"{property_name}_{depth_key}"
+                )
 
                 # Add depth information
                 aggregated_df["depth"] = depth_key

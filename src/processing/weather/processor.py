@@ -87,7 +87,9 @@ class WeatherProcessor(BaseProcessor):
 
             # Step 4: Spatial aggregation - aggregate to admin boundaries
             logger.debug(f"Spatially aggregating {variable} to admin boundaries...")
-            aggregated_df = self.spatial_aggregator.aggregate_dataset(weekly_ds)
+            aggregated_df = self.spatial_aggregator.aggregate_dataset(
+                weekly_ds, variable
+            )
 
             # Step 5: Format and save output
             logger.debug(f"Formatting and saving output for {variable}...")
