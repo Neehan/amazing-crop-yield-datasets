@@ -142,22 +142,15 @@ class SpatialAggregator:
 
         # Process weekly aggregated data
         if "week" in dataset.dims:
-            results = self._process_weekly_data(var_data, admin_mask, cropland_masks)
+            results = self._process_weekly_data(
+                variable_name, var_data, admin_mask, cropland_masks
+            )
         else:
             raise ValueError(
                 "Dataset must have 'week' dimension for processing. Daily data should be temporally aggregated first."
             )
 
         df = pd.DataFrame(results)
-
-        # Cache the results year by year
-        for year in all_years:
-            year_df = df[df["time"].str.startswith(str(year))]
-            if not year_df.empty:
-                cache_file = self._get_cache_filename(variable_name, year)
-                year_df.to_csv(cache_file, index=False)
-                logger.debug(f"Cached {year} results to {cache_file}")
-
         logger.debug(f"Spatial aggregation complete: {len(df)} records generated")
         return df
 
@@ -270,7 +263,11 @@ class SpatialAggregator:
         return cropland_masks
 
     def _process_weekly_data(
-        self, var_data: xr.DataArray, admin_mask: np.ndarray, cropland_masks: dict
+        self,
+        variable_name: str,
+        var_data: xr.DataArray,
+        admin_mask: np.ndarray,
+        cropland_masks: dict,
     ) -> List[dict]:
         """Process weekly aggregated data with full vectorization"""
         logger.debug("Processing weekly aggregated data...")
@@ -319,6 +316,13 @@ class SpatialAggregator:
             )
             results.extend(year_results)
 
+            # Save this year immediately
+            if year_results:
+                year_df = pd.DataFrame(year_results)
+                cache_file = self._get_cache_filename(variable_name, year_int)
+                year_df.to_csv(cache_file, index=False)
+                logger.debug(f"Cached {year_int} results to {cache_file}")
+
         return results
 
     def _extract_all_years_from_dataset(self, dataset: xr.Dataset) -> List[int]:
@@ -339,28 +343,30 @@ class SpatialAggregator:
     def _precompute_admin_arrays(self):
         """Pre-compute admin info as numpy arrays for fast access (optimization #1)"""
         n_admin = len(self.boundaries_indexed)
-        
+
         # Pre-allocate arrays
         self.admin_names = np.empty(n_admin, dtype=object)
         self.admin_lats = np.empty(n_admin, dtype=np.float32)
         self.admin_lons = np.empty(n_admin, dtype=np.float32)
-        
+
         # Pre-compute admin level names arrays
         self.admin_level_names = {}
         for level in range(1, self.base_processor.admin_level + 1):
             self.admin_level_names[level] = np.empty(n_admin, dtype=object)
-        
+
         # Fill arrays once
         for admin_id in range(n_admin):
             admin_row = self.boundaries_indexed.iloc[admin_id]
             centroid = self.boundary_centroids.iloc[admin_id]
-            
+
             self.admin_names[admin_id] = self.base_processor.get_admin_name(admin_row)
             self.admin_lats[admin_id] = round(centroid.y, 3)
             self.admin_lons[admin_id] = round(centroid.x, 3)
-            
+
             for level in range(1, self.base_processor.admin_level + 1):
-                self.admin_level_names[level][admin_id] = admin_row.get(f"NAME_{level}", "")
+                self.admin_level_names[level][admin_id] = admin_row.get(
+                    f"NAME_{level}", ""
+                )
 
     def _load_cropland_data(self):
         """Load HYDE cropland data"""
@@ -556,7 +562,7 @@ class SpatialAggregator:
             # Store results in pre-allocated arrays
             valid_indices = np.where(valid_weight_mask)[0]
             n_valid = len(valid_indices)
-            
+
             # Batch fill arrays
             end_idx = result_count + n_valid
             result_times[result_count:end_idx] = time_str
@@ -568,7 +574,7 @@ class SpatialAggregator:
         results = []
         for i in range(result_count):
             admin_id = int(result_admin_ids[i])
-            
+
             result_dict = {
                 "time": result_times[i],
                 "admin_name": self.admin_names[admin_id],
@@ -581,7 +587,9 @@ class SpatialAggregator:
 
             # Add admin level names using cached arrays
             for level in range(1, self.base_processor.admin_level + 1):
-                result_dict[f"admin_level_{level}_name"] = self.admin_level_names[level][admin_id]
+                result_dict[f"admin_level_{level}_name"] = self.admin_level_names[
+                    level
+                ][admin_id]
 
             results.append(result_dict)
 
