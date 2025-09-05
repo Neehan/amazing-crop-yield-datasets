@@ -21,7 +21,7 @@ class LandSurfaceProcessor(BaseProcessor):
         super().__init__(config.country, config.admin_level, config.data_dir)
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
-            self, config.country, cropland_filter=False
+            self, config.country, cropland_filter=True
         )
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = LandSurfaceFormatter()
@@ -103,5 +103,35 @@ class LandSurfaceProcessor(BaseProcessor):
             output_files.append(output_file)
             logger.debug(f"Completed processing for {variable}: {output_file}")
 
+            # Log coverage statistics
+            self._log_coverage_statistics(pivoted_df, variable)
+
         logger.debug(f"Land surface processing complete. Output files: {output_files}")
         return output_files
+
+    def _log_coverage_statistics(self, df, variable: str):
+        """Log admin unit coverage statistics"""
+
+        # Calculate expected years
+        expected_years = self.config.end_year - self.config.start_year
+
+        # Count records per admin pair
+        # Note: After formatting, columns are renamed from admin_level_X_name to admin_level_X
+        admin_cols = [f"admin_level_{i}" for i in range(1, self.config.admin_level + 1)]
+        records_per_admin = df.groupby(admin_cols).size()
+
+        # Count complete vs incomplete coverage
+        complete_coverage = (records_per_admin == expected_years).sum()
+        total_admin_pairs = len(records_per_admin)
+        coverage_pct = complete_coverage / total_admin_pairs * 100
+
+        # Log concise coverage summary
+        incomplete_pairs = records_per_admin[records_per_admin < expected_years]
+        if len(incomplete_pairs) > 0:
+            logger.info(
+                f"Coverage for {variable}: {complete_coverage}/{total_admin_pairs} admin pairs ({coverage_pct:.1f}%) have complete {expected_years}-year coverage"
+            )
+        else:
+            logger.info(
+                f"Coverage for {variable}: All {total_admin_pairs} admin pairs have complete {expected_years}-year coverage"
+            )

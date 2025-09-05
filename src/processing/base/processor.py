@@ -140,6 +140,9 @@ class BaseProcessor:
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / filename
             df.to_csv(output_file, index=False)
+
+            # Check for NaN values after saving CSV
+            self._check_nan_values(df, filename)
         elif output_format == "parquet":
             output_file = processed_dir / filename
             df.to_parquet(output_file, index=False)
@@ -147,6 +150,26 @@ class BaseProcessor:
             raise ValueError(f"Unsupported output format: {output_format}")
 
         return output_file
+
+    def _check_nan_values(self, df: pd.DataFrame, filename: str):
+        """Check for NaN values in the dataset and log warnings"""
+        nan_counts = df.isnull().sum()
+        total_nans = nan_counts.sum()
+
+        if total_nans > 0:
+            logger.warning(
+                f"NaN values detected in {filename}: {total_nans} total NaN values"
+            )
+
+            # Log columns with NaN values
+            cols_with_nans = nan_counts[nan_counts > 0]
+            for col, count in cols_with_nans.items():
+                pct_nan = (count / len(df)) * 100
+                logger.warning(f"  - {col}: {count} NaN values ({pct_nan:.1f}%)")
+        else:
+            logger.info(
+                f"Data quality check passed for {filename}: No NaN values found"
+            )
 
     def combine_annual_files_in_memory(self, annual_files: List[Path]) -> xr.Dataset:
         """Combine annual NetCDF files in memory without saving

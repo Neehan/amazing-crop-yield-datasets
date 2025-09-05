@@ -82,15 +82,22 @@ class LandSurfaceDownloader(BaseDownloader):
             week_start = Date(start_date).advance(week * 7, "day")
             week_end = week_start.advance(7, "day")
 
-            # Filter collection to this week, select this variable, and take mean
-            weekly_mean = (
-                ic.filterDate(week_start, week_end)
-                .select(variable)
-                .mean()
-                .rename(f"week_{week+1:02d}")
+            # Filter collection to this week
+            week_collection = ic.filterDate(week_start, week_end).select(variable)
+
+            # Check if we have any data for this week
+            week_size = week_collection.size()
+
+            # Create weekly mean, handling missing data properly
+            weekly_mean = ee.Algorithms.If(
+                week_size.gt(0),
+                # If we have data, compute mean
+                week_collection.mean().rename(f"week_{week+1:02d}"),
+                # If no data, create image with -999999 (large negative number for missing data)
+                Image.constant(-999999).rename(f"week_{week+1:02d}").clip(region),
             )
 
-            weekly_images.append(weekly_mean)
+            weekly_images.append(Image(weekly_mean))
 
         # Combine all weekly means into one multi-band image
         multi_band_image = Image.cat(weekly_images).toFloat()

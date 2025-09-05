@@ -62,28 +62,34 @@ class TiffConverter:
                 crs = src.crs
                 height, width = src.height, src.width
 
-        # Convert -inf values (over water) to NaN so they get ignored in averaging
-        data = np.where(np.isneginf(data), np.nan, data)
+        # Clean and validate data
+        data = self._clean_and_validate_data(data, variable)
 
-        # Build time from the actual band count (handles 52/53 week variations)
+        # Build time coordinates (should always be 52 weeks now that downloader is fixed)
         n_bands = data.shape[0]
         jan1 = pd.Timestamp(year=year, month=1, day=1)
-        times = pd.date_range(jan1, periods=n_bands, freq="7D")  # matches bands
+
+        if n_bands != 52:
+            logger.warning(
+                f"Year {year} {variable}: Expected 52 weeks, got {n_bands} - this should not happen with fixed downloader!"
+            )
+
+        times = pd.date_range(jan1, periods=52, freq="7D")
 
         # Create clean DataArray with proper spatial coordinates from transform
         lons, lats = np.meshgrid(
             np.linspace(transform.c, transform.c + transform.a * width, width),
             np.linspace(transform.f, transform.f + transform.e * height, height),
         )
-        
+
         da = xr.DataArray(
-            data, 
+            data,
             dims=["time", "lat", "lon"],
             coords={
                 "time": times,
                 "lat": lats[:, 0],  # Take first column for lat coords
                 "lon": lons[0, :],  # Take first row for lon coords
-            }
+            },
         )
         da = da.rio.write_crs(crs)
 
@@ -123,3 +129,30 @@ class TiffConverter:
             weekly_files.append(weekly_nc_path)
 
         return weekly_files
+
+    def _clean_and_validate_data(self, data: np.ndarray, variable: str) -> np.ndarray:
+        """Clean and validate data based on variable type
+
+        Args:
+            data: Raw data array from TIFF
+            variable: Variable name (e.g., 'ndvi', 'lai_high')
+
+        Returns:
+            Cleaned data array with invalid values set to NaN
+        """
+        # Convert -inf values (over water) and -999999 (missing weeks) to NaN
+        data = np.where(np.isneginf(data), np.nan, data)
+        data = np.where(data == -999999, np.nan, data)
+
+        # Apply variable-specific data validation
+        variable_lower = variable.lower()
+
+        if variable_lower == "ndvi":
+            # NOAA NDVI is typically scaled by 10000, so valid range is -10000 to 10000
+            # Filter extreme outliers that are clearly invalid
+            data = np.where((data >= -10000) & (data <= 10000), data, np.nan)
+        elif variable_lower.startswith("lai"):
+            # LAI should be between 0 and 8, filter extreme outliers
+            data = np.where((data >= 0) & (data <= 9), data, np.nan)
+        # Add more variable validations here as needed
+        return data
