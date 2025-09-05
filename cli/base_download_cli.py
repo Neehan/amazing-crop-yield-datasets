@@ -59,7 +59,7 @@ def list_variables(variable_enum: Any):
         f"Available {variable_enum.__name__.replace('Variable', '').lower()} variables:"
     )
     for var in variable_enum:
-        print(f"  {var.key}: {var.variable} ({var.statistic})")
+        print(f"  {var.key}: {var.variable}")
 
 
 def validate_country(country: Optional[str]):

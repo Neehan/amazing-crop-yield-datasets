@@ -38,10 +38,14 @@ def add_land_surface_arguments(parser):
 
 def parse_land_surface_arguments(args):
     """Parse land surface-specific arguments and return config kwargs"""
+    variables = None
+    if args.variables:
+        enum_vars = parse_variables(args.variables, LandSurfaceVariable)
+        if enum_vars:
+            variables = [var.key_suffix for var in enum_vars]  # type: ignore
+
     return {
-        "variables": parse_variables(
-            getattr(args, "variables", None), LandSurfaceVariable
-        ),
+        "variables": variables,
         "start_year": args.start_year,
         "end_year": args.end_year,
     }

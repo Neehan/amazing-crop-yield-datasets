@@ -8,8 +8,9 @@ from typing import Optional, List
 class LandSurfaceVariable(Enum):
     """Available land surface variables from ERA5-Land via Google Earth Engine"""
 
-    LAI_HIGH_VEG = ("leaf_area_index_high_vegetation", "lai_high")
-    LAI_LOW_VEG = ("leaf_area_index_low_vegetation", "lai_low")
+    LAI_HIGH = ("leaf_area_index_high_vegetation", "lai_high")
+    LAI_LOW = ("leaf_area_index_low_vegetation", "lai_low")
+    NDVI = ("NDVI", "ndvi")
 
     def __init__(self, variable: str, key_suffix: str):
         self.variable = variable  # GEE band name
@@ -36,3 +37,15 @@ class GEEConfig:
     # Export settings
     export_format: str = "GeoTIFF"
     file_per_band: bool = False  # Export all bands in one file
+
+    # NDVI dataset configurations
+    ndvi_avhrr_dataset: str = "NOAA/CDR/AVHRR/NDVI/V5"  # 1982-2013
+    ndvi_viirs_dataset: str = "NOAA/CDR/VIIRS/NDVI/V1"  # 2014+
+    ndvi_transition_year: int = 2014
+
+    def get_ndvi_dataset(self, year: int) -> str:
+        """Get appropriate NDVI dataset based on year"""
+        if year < self.ndvi_transition_year:
+            return self.ndvi_avhrr_dataset
+        else:
+            return self.ndvi_viirs_dataset

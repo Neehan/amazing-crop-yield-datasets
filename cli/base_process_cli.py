@@ -7,6 +7,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, List, Optional
+from enum import Enum
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -72,7 +73,7 @@ def add_variables_argument(parser: argparse.ArgumentParser, variable_enum: Any):
 
 def parse_variables(
     variable_keys: Optional[List[str]], variable_enum: Any
-) -> Optional[List[Any]]:
+) -> Optional[List[Enum]]:
     """Convert variable keys to enum instances"""
     if not variable_keys:
         return None

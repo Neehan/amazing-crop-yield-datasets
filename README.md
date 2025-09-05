@@ -30,7 +30,11 @@ key: YOUR_API_KEY_HERE
 
 ### Land Surface Data Setup (Google Earth Engine)
 
-Land surface data (LAI, NDVI, etc.) comes from ERA-5 Daily Reanalysis (**not AgERA-5**). Downloading this data directly from CDS is inconvenient since each request takes over 40 minutes. Therefore, it should be downloaded from the ERA-5 mirror via Google Earth Engine.
+Land surface data (LAI, NDVI, etc.) comes from multiple sources via Google Earth Engine:
+- **LAI**: ERA-5 Daily Reanalysis (**not AgERA-5**)  
+- **NDVI**: NOAA CDR datasets (AVHRR for 1982-2013, VIIRS for 2014+)
+
+Downloading this data directly from original sources is inconvenient since each request takes over 40 minutes. Therefore, it should be downloaded via Google Earth Engine.
 
 **Important Note:** Google Earth Engine API access is free only up to a limit. If you exceed the limit, your account will be charged. This is why the entire weather dataset is not downloaded through Google Earth Engine, even though it would be technically possible and faster.
 
@@ -83,16 +87,19 @@ python -m cli.download_weather --country argentina --start-year 2020 --end-year 
 *Requires Google Earth Engine authentication (see setup above)*
 
 ```bash
-# Download LAI data for a country
+# Download LAI and NDVI data for a country
 python -m cli.download_land_surface --country Argentina --start-year 2020 --end-year 2022
 
 # Download specific variables
-python -m cli.download_land_surface --country USA --variables lai_low lai_high --start-year 2020 --end-year 2022
+python -m cli.download_land_surface --country USA --variables lai_low lai_high ndvi --start-year 2020 --end-year 2022
+
+# Download NDVI data spanning the dataset transition (1982-2013 AVHRR, 2014+ VIIRS)
+python -m cli.download_land_surface --country USA --variables ndvi --start-year 2010 --end-year 2020
 ```
 
 **Available options:**
 - `--country`: Country name (e.g., 'USA', 'Brazil', 'Argentina')
-- `--start-year`: Start year (default: 1979)
+- `--start-year`: Start year (default: 1979, but NDVI only available from 1982)
 - `--end-year`: End year (default: current year)
 - `--variables`: Specific variables to download (default: all available)
 - `--concurrent`: Number of concurrent downloads (default: 4)
@@ -149,13 +156,12 @@ python -m cli.process_weather --country USA --variables temp_min temp_max --star
 
 ```bash
 # Process LAI data to admin-level weekly averages
-python -m cli.process_land_surface argentina --start-year 2020 --end-year 2021
-
+python -m cli.process_land_surface --country argentina --start-year 1979 --end-year 2025
 # Process specific variables only
-python -m cli.process_land_surface argentina --start-year 2020 --end-year 2021 --variables lai_low lai_high
+python -m cli.process_land_surface --country argentina --start-year 1982 --end-year 2025 --variables ndvi
 
 # Process to state-level instead of county-level
-python -m cli.process_land_surface argentina --admin-level 1 --start-year 2020 --end-year 2021
+python -m cli.process_land_surface --country argentina --start-year 1982 --end-year 2025 --admin-level 1
 ```
 
 **Available options:**
@@ -240,6 +246,7 @@ Administrative-Level CSV Files
 - **Temporal Component**: Daily/Weekly time series
 - **Masking Strategy**: **Admin boundaries only (no cropland mask)**
 - **Rationale**: LAI and other vegetation indices vary dramatically throughout the growing season. Applying a static cropland mask would exclude many administrative areas during non-growing periods when LAI is naturally low
+- **NDVI Dataset Handling**: Automatically switches between NOAA CDR AVHRR NDVI (1982-2013) and NOAA CDR VIIRS NDVI (2014+) to provide consistent temporal coverage
 
 #### Soil Data Processing
 - **Temporal Component**: None (static properties)

@@ -38,8 +38,14 @@ def add_weather_arguments(parser):
 
 def parse_weather_arguments(args):
     """Parse weather-specific arguments and return config kwargs"""
+    variables = None
+    if args.variables:
+        enum_vars = parse_variables(args.variables, WeatherVariable)
+        if enum_vars:
+            variables = [var.key for var in enum_vars]  # type: ignore
+
     return {
-        "variables": parse_variables(getattr(args, "variables", None), WeatherVariable),
+        "variables": variables,
         "start_year": args.start_year,
         "end_year": args.end_year,
     }

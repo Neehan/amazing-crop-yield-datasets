@@ -9,6 +9,7 @@ from ee.featurecollection import FeatureCollection
 from ee.filter import Filter
 from ee.ee_date import Date
 
+
 import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -35,11 +36,20 @@ class LandSurfaceDownloader(BaseDownloader):
         variable = kwargs["variable"]
         region = kwargs["region"]
 
+        if year < 1982 and variable == "NDVI":
+            raise ValueError("NDVI data is only available from 1982 onwards")
+
         start_date = f"{year}-01-01"
         end_date = f"{year+1}-01-01"
 
+        # Select dataset based on variable and year
+        if variable == "NDVI":
+            dataset = self.config.get_ndvi_dataset(year)
+        else:
+            dataset = self.config.dataset
+
         return {
-            "dataset": self.config.dataset,
+            "dataset": dataset,
             "start_date": start_date,
             "end_date": end_date,
             "variable": variable,
@@ -91,8 +101,9 @@ class LandSurfaceDownloader(BaseDownloader):
         """Handle Google Earth Engine image by downloading directly"""
         file_path = kwargs["file_path"]
         year = kwargs["year"]
+        variable_name = kwargs["variable_name"]
 
-        logger.info(f"Downloading GEE image for {year}")
+        logger.info(f"Downloading {variable_name} for {year}")
 
         # Get download URL from the image
         loop = asyncio.get_event_loop()
@@ -121,9 +132,12 @@ class LandSurfaceDownloader(BaseDownloader):
 
     def _get_country_region(self) -> Any:
         """Get country geometry from Google Earth Engine"""
+        # Use base class geography instance to get proper country name
+        proper_country_name = self.geography.get_country_full_name(self.country)
+
         gaul0 = FeatureCollection(self.config.boundaries_dataset)
         country_feature = gaul0.filter(
-            Filter.eq(self.config.country_property, self.country)
+            Filter.eq(self.config.country_property, proper_country_name)
         ).first()
         return country_feature.geometry()
 
@@ -137,6 +151,12 @@ class LandSurfaceDownloader(BaseDownloader):
         end_year = end_year or datetime.now().year
         variables = variables or list(LandSurfaceVariable)
 
+        # Log which variables are being downloaded
+        variable_names = [var.key_suffix for var in variables]
+        logger.info(
+            f"Downloading variables: {', '.join(variable_names)} for {self.country} ({start_year}-{end_year-1})"
+        )
+
         region = self._get_country_region()
 
         download_tasks = []
@@ -149,6 +169,7 @@ class LandSurfaceDownloader(BaseDownloader):
                         {
                             "year": year,
                             "variable": variable.variable,  # Pass the band name
+                            "variable_name": variable.key_suffix,  # Pass readable name for logging
                             "region": region,
                             "file_path": file_path,
                             "item_id": f"land_surface_{year}_{variable.key_suffix}",
