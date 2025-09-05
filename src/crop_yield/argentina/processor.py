@@ -151,7 +151,7 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
 
     min_year = output_df["year"].min()
     max_year = output_df["year"].max()
-    output_file = output_dir / f"{crop_english}_yield_{min_year}-{max_year}.csv"
+    output_file = output_dir / f"crop_{crop_english}_yield_{min_year}-{max_year}.csv"
     output_df.to_csv(output_file, index=False)
 
     logger.info(
