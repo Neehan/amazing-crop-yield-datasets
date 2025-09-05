@@ -58,6 +58,7 @@ To set up Google Earth Engine access:
    # Set your project ID
    export GOOGLE_CLOUD_PROJECT=your-project-id
    ```
+   **Note:** If you are on an HPC that blocks I/O, the easiest option is to generate the credentials on your local computer with the above command, then copy them to `~/.config/earthengine/credentials` on remote.
 
 
 ## Usage
