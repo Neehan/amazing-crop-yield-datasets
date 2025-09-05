@@ -25,7 +25,7 @@ cd /home/notadib/projects/amazing-crop-yield-datasets
 
 # Set up Python environment if needed
 # conda activate your_env_name  # uncomment if using conda environment
-pip install -r requirements.txt  # uncomment if dependencies not installed
+# pip install -r requirements.txt  # uncomment if dependencies not installed
 
 # Download weather data
 echo "Starting weather data download for $COUNTRY..."
