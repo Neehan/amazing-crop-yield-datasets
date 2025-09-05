@@ -102,19 +102,17 @@ Processed files are saved as: `{crop_name}_yield_{min_year}-{max_year}.csv`
 - `{crop_name}_yield` - Yield in kg/hectare
 
 **Example output files:**
-- `wheat_yield_1970-2025.csv`
-- `corn_yield_1970-2025.csv`
-- `soybean_yield_1975-2025.csv`
-- `sunflower_yield_1970-2025.csv`
-- `barley_yield_2017-2024.csv`
+- `crop_wheat_yield_1970-2025.csv`
+- `crop_corn_yield_1970-2025.csv`
+- `crop_soybean_yield_1975-2025.csv`
+- `crop_sunflower_yield_1970-2025.csv`
+- `crop_barley_yield_2017-2024.csv`
 
 ### Data Quality Filtering
 
 The processor applies quality filtering:
 
-- **Threshold**: 75% data completeness required
-- **Evaluation period**: Last 20 years of available data
-- **Action**: Departments with >25% missing data are dropped entirely
+- Departments with >50% missing data in the last 20 years are dropped entirely
 
 ### Statistics Output
 
