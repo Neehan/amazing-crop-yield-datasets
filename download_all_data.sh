@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH -p mit_normal
+#SBATCH -p mit_preemptable
 #SBATCH -c 16
 #SBATCH --mem=32G
 #SBATCH -t 24:00:00
