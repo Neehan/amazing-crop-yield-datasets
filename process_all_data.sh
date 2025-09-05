@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH -p mit_preemptable
-#SBATCH -c 16
+#SBATCH -c 48
 #SBATCH --mem=64G
 #SBATCH -t 24:00:00
 #SBATCH -J crop_process

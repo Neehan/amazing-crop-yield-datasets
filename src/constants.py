@@ -21,6 +21,9 @@ SOIL_RESOLUTION_DEGREES = 0.1  # Resolution for soil data downloads
 CHUNK_SIZE_TIME_PROCESSING = 100  # Time steps to process at once
 DOWNLOAD_CHUNK_SIZE = 8192  # Bytes for file downloads
 
+# Spatial processing
+SUBCELL_SIZE = 3  # Subcell subdivision factor (3x3 = 9 subcells per grid cell)
+
 # Output formats
 OUTPUT_FORMAT_CSV = "csv"
 OUTPUT_FORMAT_PARQUET = "parquet"

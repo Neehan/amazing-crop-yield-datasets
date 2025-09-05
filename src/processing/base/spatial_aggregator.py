@@ -15,7 +15,7 @@ import rasterio.features
 from rasterio.transform import from_bounds
 
 from src.processing.base.processor import BaseProcessor
-from src.constants import CHUNK_SIZE_TIME_PROCESSING
+from src.constants import CHUNK_SIZE_TIME_PROCESSING, SUBCELL_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class SpatialAggregator:
        - Combined: Only process admin units that have cropland
 
     2. AVERAGING: For each admin unit, compute area-weighted average
-       - Uses 25-subcell subdivision per grid cell for proper area weighting
+       - Uses SUBCELL_SIZE-subcell subdivision per grid cell for proper area weighting
        - Combines area weights with cropland filtering for final aggregation
     """
 
@@ -368,9 +368,9 @@ class SpatialAggregator:
     def _create_admin_mask(
         self, lats: np.ndarray, lons: np.ndarray, lat_step: float, lon_step: float
     ) -> np.ndarray:
-        """Create admin boundary mask for the grid with 25-subcell area weighting"""
-        # Create 5x5 subdivision for each grid cell (25 subcells total)
-        subcell_factor = 5
+        """Create admin boundary mask for the grid with configurable subcell area weighting"""
+        # Create subdivision for each grid cell (SUBCELL_SIZE^2 subcells total)
+        subcell_factor = SUBCELL_SIZE
         high_res_lats = np.linspace(
             lats.min() - lat_step / 2,
             lats.max() + lat_step / 2,
@@ -428,7 +428,8 @@ class SpatialAggregator:
                         subcell_block[valid_mask], return_counts=True
                     )
                     # Store area weights for each admin unit
-                    area_weights[i, j, unique_ids] = counts / 25.0  # 25 subcells total
+                    total_subcells = SUBCELL_SIZE * SUBCELL_SIZE
+                    area_weights[i, j, unique_ids] = counts / total_subcells
 
                     # Assign the admin ID with the largest area
                     dominant_admin = unique_ids[np.argmax(counts)]
