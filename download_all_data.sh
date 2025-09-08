@@ -6,16 +6,44 @@
 #SBATCH -t 24:00:00
 #SBATCH -J crop_download
 
-# Check if country argument is provided
-if [ $# -eq 0 ]; then
-    echo "Usage: sbatch download_all_data.sh <COUNTRY>"
-    echo "Example: sbatch download_all_data.sh Argentina"
+# Default values
+START_YEAR=1979
+END_YEAR=2025
+COUNTRY="argentina"
+
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --start-year)
+            START_YEAR="$2"
+            shift 2
+            ;;
+        --end-year)
+            END_YEAR="$2"
+            shift 2
+            ;;
+        --country)
+            COUNTRY="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: sbatch download_all_data.sh --country COUNTRY [--start-year YEAR] [--end-year YEAR]"
+            echo "Example: sbatch download_all_data.sh --country Argentina --start-year 1980 --end-year 2020"
+            exit 1
+            ;;
+    esac
+done
+
+# Check if country is provided
+if [ -z "$COUNTRY" ]; then
+    echo "Error: --country is required"
+    echo "Usage: sbatch download_all_data.sh --country COUNTRY [--start-year YEAR] [--end-year YEAR]"
+    echo "Example: sbatch download_all_data.sh --country Argentina --start-year 1980 --end-year 2020"
     exit 1
 fi
 
-COUNTRY="$1"
-START_YEAR=1979
-END_YEAR=2025
+NDVI_START_YEAR=$((START_YEAR > 1982 ? START_YEAR : 1982))
 
 # Load required modules
 module load miniforge/24.3.0-0
@@ -35,7 +63,7 @@ python -m cli.download_weather --country "$COUNTRY" --start-year $START_YEAR --e
 echo "Starting land surface data download for $COUNTRY..."
 python -m cli.download_land_surface --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --concurrent 8 --variables lai_low lai_high
 # ndvi doesnt exist between 1979-81 so need to download separately
-python -m cli.download_land_surface --country "$COUNTRY" --start-year 1982 --end-year $END_YEAR --concurrent 8 --variables ndvi
+python -m cli.download_land_surface --country "$COUNTRY" --start-year $NDVI_START_YEAR --end-year $END_YEAR --concurrent 8 --variables ndvi
 
 # Download soil data (no temporal component)
 echo "Starting soil data download for $COUNTRY..."

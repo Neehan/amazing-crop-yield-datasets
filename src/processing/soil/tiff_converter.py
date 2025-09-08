@@ -3,7 +3,6 @@
 import logging
 from pathlib import Path
 from typing import List, Optional
-import re
 
 import xarray as xr
 import rasterio
@@ -48,8 +47,13 @@ class SoilTiffConverter:
 
         logger.info(f"Converting TIF files for property: {property_name}")
 
-        pattern = f"{property_name}_*_mean.tif"
-        tif_files = list(soil_dir.glob(pattern))
+        # Explicitly list all known depth files for this property
+        # This avoids matching organic_carbon_density when looking for organic_carbon
+        tif_files = [
+            soil_dir / f"{property_name}_{depth}_mean.tif"
+            for depth in depths
+            if (soil_dir / f"{property_name}_{depth}_mean.tif").exists()
+        ]
 
         if not tif_files:
             raise ValueError(
@@ -135,10 +139,17 @@ class SoilTiffConverter:
         self, filename: str, property_name: str
     ) -> Optional[str]:
         """Extract depth key from filename"""
-        remaining = filename.replace(f"{property_name}_", "").replace("_mean.tif", "")
+        # Remove .tif suffix and split by underscores
+        parts = filename.replace("_mean.tif", "").split("_")
 
-        if re.match(r"\d+_\d+cm$", remaining):
-            return remaining
+        # Look for two consecutive parts that are numbers followed by "cm"
+        for i in range(len(parts) - 1):
+            if (
+                parts[i].isdigit()
+                and parts[i + 1].endswith("cm")
+                and parts[i + 1][:-2].isdigit()
+            ):
+                return f"{parts[i]}_{parts[i + 1]}"
 
         logger.warning(f"Could not extract depth from filename: {filename}")
         return None

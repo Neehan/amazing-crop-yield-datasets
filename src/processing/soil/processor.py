@@ -72,9 +72,8 @@ class SoilProcessor(BaseProcessor):
             for depth_key in combined_ds.depth.values:
                 depth_ds = combined_ds.sel(depth=depth_key)
 
-                # Create a fake time dimension for spatial aggregator
-                depth_ds = depth_ds.expand_dims("time")
-                depth_ds = depth_ds.assign_coords(time=[pd.Timestamp("2020-01-01")])
+                # Add fake temporal structure for spatial aggregator compatibility
+                depth_ds = self._add_fake_temporal_structure(depth_ds, year=2020)
 
                 # Spatial aggregation
                 aggregated_df = self.spatial_aggregator.aggregate_dataset(
@@ -107,5 +106,31 @@ class SoilProcessor(BaseProcessor):
             output_files.append(output_file)
             logger.debug(f"Completed processing for {property_name}: {output_file}")
 
-        logger.info(f"Soil processing complete. Output files: {output_files}")
         return output_files
+
+    def _add_fake_temporal_structure(
+        self, dataset: xr.Dataset, year: int = 2020
+    ) -> xr.Dataset:
+        """Add fake temporal structure to static data for spatial aggregator compatibility
+
+        Args:
+            dataset: Static dataset (e.g., soil data)
+            year: Year to assign to the data (default: 2020 for soil data)
+
+        Returns:
+            Dataset with fake temporal structure (week dimension with year coordinate)
+        """
+        # Create fake temporal structure for spatial aggregator (soil data is from 2020)
+        # Need to restructure to have week dimension like weather data
+        dataset = dataset.expand_dims("time")
+        dataset = dataset.assign_coords(time=[pd.Timestamp(f"{year}-01-01")])
+
+        # Add year and week coordinates to time dimension
+        dataset = dataset.assign_coords(year=("time", [year]))
+        dataset = dataset.assign_coords(week=("time", [1]))
+
+        # Restructure to have week dimension (like weather data after temporal aggregation)
+        dataset = dataset.groupby("week").mean("time")
+        dataset = dataset.assign_coords(year=("week", [year]))
+
+        return dataset

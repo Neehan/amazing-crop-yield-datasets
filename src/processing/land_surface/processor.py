@@ -4,6 +4,9 @@ import logging
 from pathlib import Path
 from typing import List
 
+import xarray as xr
+from tqdm import tqdm
+
 from src.processing.base.processor import BaseProcessor
 from src.processing.base.spatial_aggregator import SpatialAggregator
 from src.processing.base.temporal_aggregator import TemporalAggregator
@@ -82,7 +85,7 @@ class LandSurfaceProcessor(BaseProcessor):
             )
 
             # Step 2: Combine annual files (already weekly, no temporal aggregation needed)
-            combined_ds = self.combine_annual_files_in_memory(weekly_nc_files)
+            combined_ds = self.combine_annual_files(weekly_nc_files)
 
             # Step 3: Spatial aggregation to admin boundaries
             aggregated_df = self.spatial_aggregator.aggregate_dataset(
@@ -110,6 +113,48 @@ class LandSurfaceProcessor(BaseProcessor):
 
         logger.debug(f"Land surface processing complete. Output files: {output_files}")
         return output_files
+
+    def _add_year_week_structure(self, dataset: xr.Dataset, year: int) -> xr.Dataset:
+        """Add year and week structure to dataset for spatial aggregator compatibility
+
+        Args:
+            dataset: Dataset with time dimension
+            year: Year to assign to the data
+
+        Returns:
+            Dataset with week dimension and year coordinate (like weather data after temporal aggregation)
+        """
+        # Add year coordinate to the time dimension
+        dataset = dataset.assign_coords(year=("time", [year] * len(dataset.time)))
+
+        # Add week coordinate (1-52) to the time dimension
+        week_numbers = list(range(1, len(dataset.time) + 1))
+        dataset = dataset.assign_coords(week=("time", week_numbers))
+
+        # Restructure to have week dimension with year coordinate (like weather data)
+        dataset = dataset.groupby("week").mean("time")
+        dataset = dataset.assign_coords(year=("week", [year] * len(dataset.week)))
+
+        return dataset
+
+    def combine_annual_files(self, annual_files: List[Path]) -> xr.Dataset:
+        """Combine annual NetCDF files and add year/week structure like weather data"""
+
+        datasets = []
+        for file_path in tqdm(sorted(annual_files), desc="Processing years"):
+            ds = xr.open_dataset(file_path)
+
+            # Extract year from filename (e.g., "2020_lai_low_weekly.nc" -> 2020)
+            year = int(file_path.stem.split("_")[0])
+
+            # Add year and week structure for spatial aggregator compatibility
+            ds = self._add_year_week_structure(ds, year)
+
+            datasets.append(ds)
+
+        # Concatenate along week dimension (already restructured)
+        combined_ds = xr.concat(datasets, dim="week")
+        return combined_ds
 
     def _log_coverage_statistics(self, df, variable: str):
         """Log admin unit coverage statistics"""
