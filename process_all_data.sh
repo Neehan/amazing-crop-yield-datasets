@@ -78,5 +78,10 @@ python -m cli.process_land_surface --country "$COUNTRY" --start-year $NDVI_START
 echo "Starting soil data processing for $COUNTRY..."
 python -m cli.process_soil --country "$COUNTRY" --admin-level $ADMIN_LEVEL
 
+# Process final merged dataset
+echo "Starting final dataset aggregation for $COUNTRY..."
+python -m cli.process_datasaver --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --admin-level $ADMIN_LEVEL --chunk-size 50
+
 echo "All processing completed for $COUNTRY"
 echo "Output files are in data/$COUNTRY/processed/"
+echo "Final merged datasets are in data/$COUNTRY/processed/final/"

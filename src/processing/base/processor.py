@@ -189,3 +189,24 @@ class BaseProcessor:
         combined_ds = xr.concat(datasets, dim="time")
         combined_ds = combined_ds.sortby("time")
         return combined_ds
+
+    def check_file_exists(self, file_path: Path) -> bool:
+        """Check if a file exists and log the result"""
+        exists = file_path.exists()
+        if not exists:
+            logger.debug(f"File not found: {file_path}")
+        return exists
+
+    def get_csv_files_by_pattern(self, csv_dir: Path, pattern: str) -> List[Path]:
+        """Get CSV files matching a pattern, with existence check"""
+        if not csv_dir.exists():
+            logger.warning(f"CSV directory not found: {csv_dir}")
+            return []
+
+        files = list(csv_dir.glob(pattern))
+        existing_files = [f for f in files if self.check_file_exists(f)]
+
+        if not existing_files:
+            logger.warning(f"No files found matching pattern: {pattern} in {csv_dir}")
+
+        return existing_files

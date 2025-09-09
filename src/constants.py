@@ -28,6 +28,10 @@ SUBCELL_SIZE = 3  # Subcell subdivision factor (3x3 = 9 subcells per grid cell)
 OUTPUT_FORMAT_CSV = "csv"
 OUTPUT_FORMAT_PARQUET = "parquet"
 
+# Data saver
+DEFAULT_CHUNK_SIZE = 50  # Process 50 locations at a time
+WEATHER_END_YEAR_MAX = 2025  # Maximum year for weather data
+
 # Default values for CLI (only place defaults are allowed)
 DEFAULT_ADMIN_LEVEL = ADMIN_LEVEL_COUNTY
 DEFAULT_OUTPUT_FORMAT = OUTPUT_FORMAT_CSV
