@@ -83,7 +83,7 @@ class DataSaverProcessor(BaseProcessor):
             if not merged_data.empty:
                 # Save chunk
                 chunk_filename = (
-                    f"merged_data_chunk_{chunk_num:03d}.{self.config.output_format}"
+                    f"features_chunk_{chunk_num:03d}.{self.config.output_format}"
                 )
                 chunk_path = final_dir / chunk_filename
 
