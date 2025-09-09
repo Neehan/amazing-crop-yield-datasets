@@ -20,18 +20,14 @@ class SoilProcessor(BaseProcessor):
     """Soil processor that converts TIF files to aggregated CSV"""
 
     def __init__(self, config: SoilConfig):
-        super().__init__(config.country, config.admin_level, config.data_dir)
+        super().__init__(
+            config.country, config.admin_level, config.data_dir, config.debug
+        )
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
             self, config.country, cropland_filter=False
         )
         self.formatter = SoilFormatter()
-
-        log_level = logging.DEBUG if config.debug else logging.INFO
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
 
         logger.info(f"SoilProcessor initialized for {config.country}")
 
@@ -39,12 +35,9 @@ class SoilProcessor(BaseProcessor):
         """Process soil data from TIF to CSV"""
         logger.info(f"Processing soil data for {self.country_full_name}")
 
-        self.config.validate()
-
         soil_dir = self.config.get_soil_directory()
-        processed_dir = self.data_dir / self.country_full_name.lower() / "processed"
-        soil_processed_dir = processed_dir / "soil"
-        soil_processed_dir.mkdir(parents=True, exist_ok=True)
+        intermediate_dir = self.get_intermediate_directory()
+        soil_processed_dir = self.get_processed_subdirectory("soil")
 
         # Initialize soil TIF converter
         tiff_converter = SoilTiffConverter(soil_processed_dir)
@@ -100,7 +93,7 @@ class SoilProcessor(BaseProcessor):
             # Step 5: Save output
             filename = f"soil_{property_name}_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
-                pivoted_df, filename, self.config.output_format, processed_dir
+                pivoted_df, filename, self.config.output_format, intermediate_dir
             )
 
             output_files.append(output_file)

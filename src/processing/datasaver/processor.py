@@ -10,6 +10,7 @@ from tqdm import tqdm
 from src.processing.datasaver.config import DataSaverConfig
 from src.processing.base.processor import BaseProcessor
 from src.constants import DEFAULT_CHUNK_SIZE, WEATHER_END_YEAR_MAX
+from src.downloader.soil.models import SoilDepth
 
 logger = logging.getLogger(__name__)
 
@@ -19,15 +20,10 @@ class DataSaverProcessor(BaseProcessor):
 
     def __init__(self, config: DataSaverConfig):
         """Initialize data saver processor"""
-        super().__init__(config.country, config.admin_level, config.data_dir)
-        self.config = config
-
-        # Set up logging
-        log_level = logging.DEBUG if config.debug else logging.INFO
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        super().__init__(
+            config.country, config.admin_level, config.data_dir, config.debug
         )
+        self.config = config
 
         logger.info(f"DataSaverProcessor initialized for {config.country}")
 
@@ -38,16 +34,14 @@ class DataSaverProcessor(BaseProcessor):
             f"({self.config.start_year}-{self.config.end_year})"
         )
 
-        self.config.validate()
-
         # Setup paths
-        processed_dir = self.config.get_processed_directory()
-        if not processed_dir.exists():
-            raise FileNotFoundError(f"Processed directory not found: {processed_dir}")
+        aggregated_dir = self.config.get_aggregated_directory()
+        if not aggregated_dir.exists():
+            raise FileNotFoundError(f"Aggregated directory not found: {aggregated_dir}")
 
         # Get all locations that exist in ALL datasets
         logger.info("Discovering all locations...")
-        all_locations = self._get_intersection_locations(processed_dir)
+        all_locations = self._get_intersection_locations(aggregated_dir)
 
         if not all_locations:
             raise ValueError("No common locations found across all datasets")
@@ -79,9 +73,9 @@ class DataSaverProcessor(BaseProcessor):
             )
 
             # Load data for this chunk
-            weather_data = self._load_weather_data(processed_dir, chunk_locations)
-            ls_data = self._load_land_surface_data(processed_dir, chunk_locations)
-            soil_data = self._load_soil_data(processed_dir, chunk_locations)
+            weather_data = self._load_weather_data(aggregated_dir, chunk_locations)
+            ls_data = self._load_land_surface_data(aggregated_dir, chunk_locations)
+            soil_data = self._load_soil_data(aggregated_dir, chunk_locations)
 
             # Merge all data types
             merged_data = self._merge_all_data(weather_data, ls_data, soil_data)
@@ -111,10 +105,10 @@ class DataSaverProcessor(BaseProcessor):
         return output_files
 
     def _get_intersection_locations(
-        self, processed_dir: Path
+        self, aggregated_dir: Path
     ) -> Set[Tuple[str, str, str]]:
         """Get locations that exist in ALL datasets (weather, land surface, soil)"""
-        csv_dir = processed_dir / "csvs"
+        csv_dir = aggregated_dir
 
         # Get locations from each data type
         weather_locations = self._get_locations_from_weather_files(csv_dir)
@@ -213,10 +207,10 @@ class DataSaverProcessor(BaseProcessor):
         return locations
 
     def _load_weather_data(
-        self, processed_dir: Path, locations: List[Tuple[str, str, str]]
+        self, aggregated_dir: Path, locations: List[Tuple[str, str, str]]
     ) -> Optional[pd.DataFrame]:
         """Load weather data for specified locations"""
-        csv_dir = processed_dir / "csvs"
+        csv_dir = aggregated_dir
 
         # Weather files: weather_YYYY-YYYY_variable_weekly_weighted_adminX.csv
         pattern = f"weather_*_weekly_weighted_admin{self.config.admin_level}.csv"
@@ -260,10 +254,10 @@ class DataSaverProcessor(BaseProcessor):
             raise ValueError("No weather data loaded")
 
     def _load_land_surface_data(
-        self, processed_dir: Path, locations: List[Tuple[str, str, str]]
+        self, aggregated_dir: Path, locations: List[Tuple[str, str, str]]
     ) -> Optional[pd.DataFrame]:
         """Load land surface data for specified locations"""
-        csv_dir = processed_dir / "csvs"
+        csv_dir = aggregated_dir
 
         # Land surface files: land_surface_YYYY-YYYY_variable_weekly_weighted_adminX.csv
         pattern = f"land_surface_*_weekly_weighted_admin{self.config.admin_level}.csv"
@@ -307,10 +301,10 @@ class DataSaverProcessor(BaseProcessor):
             raise ValueError("No land surface data loaded")
 
     def _load_soil_data(
-        self, processed_dir: Path, locations: List[Tuple[str, str, str]]
+        self, aggregated_dir: Path, locations: List[Tuple[str, str, str]]
     ) -> Optional[pd.DataFrame]:
         """Load soil data for specified locations"""
-        csv_dir = processed_dir / "csvs"
+        csv_dir = aggregated_dir
 
         # Soil files: soil_property_weighted_adminX.csv
         pattern = f"soil_*_weighted_admin{self.config.admin_level}.csv"
@@ -480,9 +474,13 @@ class DataSaverProcessor(BaseProcessor):
                 other_cols.append(col)
 
         # Sort each group to maintain consistent ordering
-        soil_cols.sort()
-        weather_cols.sort()
-        land_surface_cols.sort()
+        # Soil columns: sort by depth order (0-5cm, 5-15cm, 15-30cm, 30-60cm, 60-100cm, 100-200cm)
+        soil_cols = self._sort_soil_columns(soil_cols)
+        # Weather columns: sort by week order (1-52)
+        weather_cols = self._sort_week_columns(weather_cols)
+        # Land surface columns: sort by week order (1-52)
+        land_surface_cols = self._sort_week_columns(land_surface_cols)
+        # Other columns: alphabetical sort
         other_cols.sort()
 
         # Combine all columns in the specified order: soil, weather, land surface
@@ -494,3 +492,29 @@ class DataSaverProcessor(BaseProcessor):
         # Return dataframe with reordered columns
         result_df = df[ordered_cols].copy()
         return pd.DataFrame(result_df)
+
+    def _sort_soil_columns(self, soil_cols: List[str]) -> List[str]:
+        """Sort soil columns by depth order using SoilDepth enum"""
+        # Get depth order from SoilDepth enum (sorted by start_cm)
+        depth_order = [
+            depth.key for depth in sorted(SoilDepth, key=lambda d: d.start_cm)
+        ]
+
+        def get_depth_key(col: str) -> int:
+            # Extract depth from column name (e.g., "soil_clay_0_5cm" -> "0_5cm")
+            for i, depth in enumerate(depth_order):
+                if depth in col:
+                    return i
+            # If depth not found, put at end
+            return len(depth_order)
+
+        return sorted(soil_cols, key=get_depth_key)
+
+    def _sort_week_columns(self, week_cols: List[str]) -> List[str]:
+        """Sort week columns by week number (1-52)"""
+
+        def get_week_key(col: str) -> int:
+            # Extract week number from column name (e.g., "week_1" -> 1)
+            return int(col.split("_")[1]) if col.startswith("week_") else 999
+
+        return sorted(week_cols, key=get_week_key)

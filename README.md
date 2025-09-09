@@ -299,9 +299,35 @@ Administrative-Level CSV Files
 
 Creates CSV files like:
 ```
-data/usa/processed/weather_2020-2021_temp_min_weekly_weighted_admin2.csv
-data/usa/processed/weather_2020-2021_temp_max_weekly_weighted_admin2.csv
-data/usa/processed/weather_2020-2021_precip_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/weather_2020-2021_temp_min_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/weather_2020-2021_temp_max_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/weather_2020-2021_precip_weekly_weighted_admin2.csv
+```
+
+## Directory Structure
+
+The project organizes data into three main categories:
+
+```
+data/{country}/
+├── raw/                    # Downloaded raw data files
+│   ├── weather/           # AgERA5 weather data (ZIP files)
+│   ├── land_surface/      # ERA5 land surface data (TIF files)
+│   ├── soil/              # SoilGrids soil data (TIF files)
+│   ├── gadm/              # GADM administrative boundaries
+│   ├── crop_yield/        # Raw crop yield data (CSV files)
+│   ├── planted_area/      # Raw planted area data
+│   └── faostat/           # Raw FAOSTAT data
+├── intermediate/           # Processed intermediate files
+│   ├── admin_mask/        # Administrative boundary masks
+│   ├── cropland_mask/     # Cropland masks
+│   ├── weather/           # Processed weather data
+│   ├── land_surface/      # Processed land surface data
+│   ├── soil/              # Processed soil data
+│   └── aggregated/        # Aggregated CSV files
+└── final/                 # Final processed datasets
+    ├── crop_<cropname*>_yield.csv     # Processed crop yield data
+    └── merged_data_chunk_*.csv    # Final merged datasets
 ```
 
 Each file contains columns:

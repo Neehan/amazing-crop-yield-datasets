@@ -2,12 +2,11 @@
 
 from pathlib import Path
 from typing import List, Optional
-from datetime import datetime
 
-from src.processing.base.config import ProcessingConfig
+from src.processing.base.config import TimeSeriesConfig
 
 
-class LandSurfaceConfig(ProcessingConfig):
+class LandSurfaceConfig(TimeSeriesConfig):
     """Configuration for land surface data processing"""
 
     def __init__(
@@ -21,23 +20,16 @@ class LandSurfaceConfig(ProcessingConfig):
         output_format: str,
         debug: bool,
     ):
-        super().__init__(country, admin_level, data_dir, output_format, debug)
-        self.start_year = start_year
-        self.end_year = end_year
-        self.variables = variables
-
-    def validate(self) -> None:
-        """Validate land surface configuration"""
-        super().validate()
-
-        if self.end_year < self.start_year:
-            raise ValueError("end_year must be >= start_year")
-
-        current_year = datetime.now().year
-        if self.end_year > current_year:
-            raise ValueError(
-                f"end_year cannot be in the future (current year: {current_year})"
-            )
+        super().__init__(
+            country,
+            start_year,
+            end_year,
+            variables,
+            admin_level,
+            data_dir,
+            output_format,
+            debug,
+        )
 
     def get_land_surface_directory(self) -> Path:
         """Get land surface data directory for this country"""
@@ -46,8 +38,8 @@ class LandSurfaceConfig(ProcessingConfig):
         geography = Geography()
         country_full_name = geography.get_country_full_name(self.country).lower()
 
-        # Country-specific directory
-        country_ls_dir = self.data_dir / country_full_name / "land_surface"
+        # Country-specific raw directory
+        country_ls_dir = self.data_dir / country_full_name / "raw" / "land_surface"
         if country_ls_dir.exists():
             return country_ls_dir
 

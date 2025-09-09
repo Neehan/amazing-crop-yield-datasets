@@ -219,8 +219,8 @@ def main():
     log_level = logging.DEBUG if args.debug else logging.INFO
     logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
 
-    data_dir = Path("data/argentina/crop_yield")
-    output_dir = Path("data/argentina/processed/csvs")
+    data_dir = Path("data/argentina/raw/crop_yield")
+    output_dir = Path("data/argentina/final")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_files = process_all_crops(data_dir, output_dir, args.crop)

@@ -19,20 +19,15 @@ class WeatherProcessor(BaseProcessor):
 
     def __init__(self, config: WeatherConfig):
         """Initialize weather processor with configuration"""
-        super().__init__(config.country, config.admin_level, config.data_dir)
+        super().__init__(
+            config.country, config.admin_level, config.data_dir, config.debug
+        )
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
             self, config.country, cropland_filter=True
         )
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = WeatherFormatter()
-
-        # Set up logging
-        log_level = logging.DEBUG if config.debug else logging.INFO
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
 
         logger.info(f"WeatherProcessor initialized for {config.country}")
 
@@ -42,14 +37,10 @@ class WeatherProcessor(BaseProcessor):
             f"Processing weather data for {self.country_full_name} ({self.config.start_year}-{self.config.end_year})"
         )
 
-        # Validate configuration
-        self.config.validate()
-
-        # Get weather directory and processed output directory
+        # Get weather directory and intermediate output directory
         weather_dir = self.config.get_weather_directory()
-        processed_dir = self.data_dir / self.country_full_name.lower() / "processed"
-        weather_processed_dir = processed_dir / "weather"
-        weather_processed_dir.mkdir(parents=True, exist_ok=True)
+        intermediate_dir = self.get_intermediate_directory()
+        weather_processed_dir = self.get_processed_subdirectory("weather")
 
         # Initialize zip extractor with weather processed directory
         zip_extractor = ZipExtractor(weather_processed_dir)
@@ -105,11 +96,10 @@ class WeatherProcessor(BaseProcessor):
             # Save output file
             filename = f"weather_{self.config.start_year}-{self.config.end_year-1}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
-                pivoted_df, filename, self.config.output_format, processed_dir
+                pivoted_df, filename, self.config.output_format, intermediate_dir
             )
 
             output_files.append(output_file)
             logger.debug(f"Completed processing for {variable}: {output_file}")
 
-        logger.info(f"Weather processing complete. Output files: {output_files}")
         return output_files

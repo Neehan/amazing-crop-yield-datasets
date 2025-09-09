@@ -45,11 +45,17 @@ class DataSaverConfig:
         if self.admin_level not in [0, 1, 2]:
             raise ValueError(f"Admin level must be 0, 1, or 2, got {self.admin_level}")
 
-    def get_processed_directory(self) -> Path:
-        """Get the processed data directory for this country"""
+    def get_intermediate_directory(self) -> Path:
+        """Get the intermediate data directory for this country"""
         country_name = self.country.lower().replace(" ", "_")
-        return self.data_dir / country_name / "processed"
+        return self.data_dir / country_name / "intermediate"
+
+    def get_aggregated_directory(self) -> Path:
+        """Get the aggregated data directory for this country"""
+        country_name = self.country.lower().replace(" ", "_")
+        return self.data_dir / country_name / "intermediate" / "aggregated"
 
     def get_final_directory(self) -> Path:
         """Get the final output directory"""
-        return self.get_processed_directory() / "final"
+        country_name = self.country.lower().replace(" ", "_")
+        return self.data_dir / country_name / "final"

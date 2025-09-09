@@ -127,7 +127,7 @@ def run_processor_cli(
 
         # Create and run processor
         processor = processor_class(config)
-        output_files = processor.process()
+        output_files = processor.process_with_validation()
 
         logger = logging.getLogger(__name__)
         logger.info(success_message)

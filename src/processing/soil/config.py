@@ -48,7 +48,7 @@ class SoilConfig(ProcessingConfig):
         geography = Geography()
         country_full_name = geography.get_country_full_name(self.country).lower()
 
-        country_soil_dir = self.data_dir / country_full_name / "soil"
+        country_soil_dir = self.data_dir / country_full_name / "raw" / "soil"
         if country_soil_dir.exists():
             return country_soil_dir
 

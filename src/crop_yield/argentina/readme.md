@@ -39,16 +39,16 @@ URL: [https://datosestimaciones.magyp.gob.ar/reportes.php?reporte=Estimaciones](
 7. **Download CSV**
    - Click **Descargar** = Download.  
    - This saves a CSV file of your query.
-   - Save it as `data/argentina/crop_yield/<crop_name>.csv`
+   - Save it as `data/argentina/raw/crop_yield/<crop_name>.csv`
 
-### Example: Wheat in Córdoba Departments
+### Example: Wheat Departments
 - Cultivo: `Trigo total`  
 - Variable: `Rendimiento`  
 - Desde: `1970/71`  
 - Hasta: `2024/25`  
 - Agregación: `Total Departamentos`  
 - Then click **Consultar → Descargar**.
-- Save as `data/argentina/crop_yield/wheat.csv`
+- Save as `data/argentina/raw/crop_yield/wheat.csv`
 
 ---
 

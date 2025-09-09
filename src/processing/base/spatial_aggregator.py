@@ -52,11 +52,11 @@ class SpatialAggregator:
         self.country_param = country_param
         self.cropland_filter = cropland_filter
 
-        # Set up cache directories under processed folder
-        processed_dir = Path("data") / country_param.lower() / "processed"
-        self.cropland_mask_dir = processed_dir / "cropland_mask"
-        self.admin_mask_dir = processed_dir / "admin_mask"
-        self.weather_processed_dir = processed_dir / "weather"
+        # Set up cache directories under intermediate folder
+        intermediate_dir = Path("data") / country_param.lower() / "intermediate"
+        self.cropland_mask_dir = intermediate_dir / "cropland_mask"
+        self.admin_mask_dir = intermediate_dir / "admin_mask"
+        self.weather_processed_dir = intermediate_dir / "weather"
 
         self.cropland_mask_dir.mkdir(parents=True, exist_ok=True)
         self.admin_mask_dir.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,7 @@
 
 from pathlib import Path
 from typing import Optional
+from datetime import datetime
 
 from src.constants import (
     ADMIN_LEVEL_COUNTRY,
@@ -49,3 +50,52 @@ class ProcessingConfig:
 
         if not self.country:
             raise ValueError("Country must be specified")
+
+    def get_intermediate_directory(self) -> Path:
+        """Get intermediate directory for this country"""
+        country_name = self.country.lower().replace(" ", "_")
+        return self.data_dir / country_name / "intermediate"
+
+    def get_processed_subdirectory(self, subdir: str) -> Path:
+        """Get a subdirectory within intermediate"""
+        processed_dir = self.get_intermediate_directory() / subdir
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        return processed_dir
+
+    def get_final_directory(self) -> Path:
+        """Get the final output directory"""
+        country_name = self.country.lower().replace(" ", "_")
+        return self.data_dir / country_name / "final"
+
+
+class TimeSeriesConfig(ProcessingConfig):
+    """Base configuration for time series data (weather, land surface)"""
+
+    def __init__(
+        self,
+        country: str,
+        start_year: int,
+        end_year: int,
+        variables: Optional[list],
+        admin_level: int,
+        data_dir: Optional[Path],
+        output_format: str,
+        debug: bool,
+    ):
+        super().__init__(country, admin_level, data_dir, output_format, debug)
+        self.start_year = start_year
+        self.end_year = end_year
+        self.variables = variables
+
+    def validate(self) -> None:
+        """Validate time series configuration"""
+        super().validate()
+
+        if self.end_year < self.start_year:
+            raise ValueError("end_year must be >= start_year")
+
+        current_year = datetime.now().year
+        if self.end_year > current_year:
+            raise ValueError(
+                f"end_year cannot be in the future (current year: {current_year})"
+            )

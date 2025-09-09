@@ -1,6 +1,7 @@
 """Base processor class for loading administrative boundaries"""
 
 import logging
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, List
 import urllib.request
@@ -17,29 +18,70 @@ from src.constants import DOWNLOAD_CHUNK_SIZE
 logger = logging.getLogger(__name__)
 
 
-class BaseProcessor:
+class BaseProcessor(ABC):
     """Base class for loading administrative boundaries using GADM data"""
 
-    def __init__(self, country: str, admin_level: int, data_dir: Optional[Path]):
+    def __init__(
+        self,
+        country: str,
+        admin_level: int,
+        data_dir: Optional[Path],
+        debug: bool = False,
+    ):
         """Initialize processor
 
         Args:
             country: Country ISO code (e.g., 'USA', 'ARG', 'BRA') or name
             admin_level: GADM administrative level (0=country, 1=state/province, 2=county/department/municipality)
             data_dir: Base data directory (defaults to ./data)
+            debug: Enable debug logging
         """
         self.geography = Geography()
         self.country_iso = self.geography.get_country_iso_code(country)
         self.country_full_name = self.geography.get_country_full_name(country)
         self.admin_level = admin_level
         self.data_dir = Path(data_dir or "data")
+        self.debug = debug
 
         # Admin boundaries cache
         self._boundaries: Optional[gpd.GeoDataFrame] = None
 
+        # Setup logging
+        self._setup_logging()
+
         logger.info(
             f"Initialized {self.__class__.__name__} for {country} at admin level {admin_level}"
         )
+
+    def _setup_logging(self):
+        """Setup logging configuration"""
+        log_level = logging.DEBUG if self.debug else logging.INFO
+        logging.basicConfig(
+            level=log_level,
+            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        )
+
+    def get_intermediate_directory(self) -> Path:
+        """Get intermediate directory for this country"""
+        return self.data_dir / self.country_full_name.lower() / "intermediate"
+
+    def get_processed_subdirectory(self, subdir: str) -> Path:
+        """Get a subdirectory within intermediate"""
+        processed_dir = self.get_intermediate_directory() / subdir
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        return processed_dir
+
+    def process_with_validation(self) -> List[Path]:
+        """Template method that validates config before processing"""
+        config = getattr(self, "config", None)
+        if config is not None:
+            config.validate()
+        return self.process()
+
+    @abstractmethod
+    def process(self) -> List[Path]:
+        """Process data - to be implemented by subclasses"""
+        pass
 
     @property
     def boundaries(self) -> gpd.GeoDataFrame:
@@ -121,7 +163,11 @@ class BaseProcessor:
                 pbar.update(len(chunk))
 
     def save_output(
-        self, df: pd.DataFrame, filename: str, output_format: str, processed_dir: Path
+        self,
+        df: pd.DataFrame,
+        filename: str,
+        output_format: str,
+        intermediate_dir: Path,
     ) -> Path:
         """Save dataframe to appropriate output format and directory
 
@@ -129,14 +175,14 @@ class BaseProcessor:
             df: DataFrame to save
             filename: Name of the output file (including extension)
             output_format: Output format ('csv' or 'parquet')
-            processed_dir: Base processed directory
+            intermediate_dir: Base intermediate directory
 
         Returns:
             Path to saved file
         """
         # Create output directory based on format
         if output_format == "csv":
-            output_dir = processed_dir / "csvs"
+            output_dir = intermediate_dir / "aggregated"
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / filename
             df.to_csv(output_file, index=False)
@@ -144,7 +190,7 @@ class BaseProcessor:
             # Check for NaN values after saving CSV
             self._check_nan_values(df, filename)
         elif output_format == "parquet":
-            output_file = processed_dir / filename
+            output_file = intermediate_dir / filename
             df.to_parquet(output_file, index=False)
         else:
             raise ValueError(f"Unsupported output format: {output_format}")

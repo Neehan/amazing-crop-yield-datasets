@@ -83,5 +83,5 @@ echo "Starting final dataset aggregation for $COUNTRY..."
 python -m cli.process_datasaver --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --admin-level $ADMIN_LEVEL --chunk-size 50
 
 echo "All processing completed for $COUNTRY"
-echo "Output files are in data/$COUNTRY/processed/"
-echo "Final merged datasets are in data/$COUNTRY/processed/final/"
+echo "Intermediate files are in data/$COUNTRY/intermediate/"
+echo "Final merged datasets are in data/$COUNTRY/final/"

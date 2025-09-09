@@ -21,7 +21,9 @@ class LandSurfaceProcessor(BaseProcessor):
     """Land surface processor - follows same pattern as weather but with TIF files"""
 
     def __init__(self, config: LandSurfaceConfig):
-        super().__init__(config.country, config.admin_level, config.data_dir)
+        super().__init__(
+            config.country, config.admin_level, config.data_dir, config.debug
+        )
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
             self, config.country, cropland_filter=True
@@ -29,26 +31,16 @@ class LandSurfaceProcessor(BaseProcessor):
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = LandSurfaceFormatter()
 
-        # Set up logging
-        log_level = logging.DEBUG if config.debug else logging.INFO
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
-
     def process(self) -> List[Path]:
         """Process land surface data - same pattern as weather"""
         logger.info(
             f"Processing land surface data for {self.country_full_name} ({self.config.start_year}-{self.config.end_year})"
         )
 
-        self.config.validate()
-
         # Get directories
         land_surface_dir = self.config.get_land_surface_directory()
-        processed_dir = self.data_dir / self.country_full_name.lower() / "processed"
-        ls_processed_dir = processed_dir / "land_surface"
-        ls_processed_dir.mkdir(parents=True, exist_ok=True)
+        intermediate_dir = self.get_intermediate_directory()
+        ls_processed_dir = self.get_processed_subdirectory("land_surface")
 
         # Initialize TIF converter
         tiff_converter = TiffConverter(ls_processed_dir)
@@ -102,7 +94,7 @@ class LandSurfaceProcessor(BaseProcessor):
             # Save output file
             filename = f"land_surface_{self.config.start_year}-{self.config.end_year-1}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
-                pivoted_df, filename, self.config.output_format, processed_dir
+                pivoted_df, filename, self.config.output_format, intermediate_dir
             )
 
             output_files.append(output_file)

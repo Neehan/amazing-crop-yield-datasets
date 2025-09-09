@@ -28,7 +28,7 @@ class BaseDownloader(ABC):
         """
         self.data_dir = Path(data_dir)
         self.country = country
-        self.subdir = Path(data_dir) / country / subdir
+        self.subdir = Path(data_dir) / country / "raw" / subdir
         self.geography = Geography()
         self.max_concurrent = max_concurrent
 
