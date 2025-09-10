@@ -60,6 +60,16 @@ To set up Google Earth Engine access:
    ```
    **Note:** If you are on an HPC that blocks I/O, the easiest option is to generate the credentials on your local computer with the above command, then copy them to `~/.config/earthengine/credentials` on remote.
 
+### Fertilizer Data Setup
+Download the FAO fertilizer data from https://www.fao.org/faostat/en/#data/RFN
+1. From countries, select "country"
+2. From Elements, select "use per area of cropland"
+3. From items, select all
+4. From years, select all
+5. At the bottom select download data. 
+
+The data is available post season and there can be a lag of up to 2-3 years. So we recommend fetching the most recent fertilizer data from specific country's government websites.
+
 
 ## Usage
 

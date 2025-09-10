@@ -36,8 +36,7 @@ class DataSaverProcessor(BaseProcessor):
 
         # Setup paths
         aggregated_dir = self.config.get_aggregated_directory()
-        if not aggregated_dir.exists():
-            raise FileNotFoundError(f"Aggregated directory not found: {aggregated_dir}")
+        aggregated_dir.mkdir(parents=True, exist_ok=True)
 
         # Get all locations that exist in ALL datasets
         logger.info("Discovering all locations...")

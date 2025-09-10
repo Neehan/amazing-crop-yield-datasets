@@ -373,6 +373,7 @@ class SpatialAggregator:
         logger.info("Loading HYDE cropland data...")
 
         hyde_file = Path("data/global/hyde-3.5/cropland.nc")
+        hyde_file.parent.mkdir(parents=True, exist_ok=True)
 
         if not hyde_file.exists():
             logger.warning("HYDE data not available - skipping cropland filtering")

@@ -245,9 +245,7 @@ class BaseProcessor(ABC):
 
     def get_csv_files_by_pattern(self, csv_dir: Path, pattern: str) -> List[Path]:
         """Get CSV files matching a pattern, with existence check"""
-        if not csv_dir.exists():
-            logger.warning(f"CSV directory not found: {csv_dir}")
-            return []
+        csv_dir.mkdir(parents=True, exist_ok=True)
 
         files = list(csv_dir.glob(pattern))
         existing_files = [f for f in files if self.check_file_exists(f)]
