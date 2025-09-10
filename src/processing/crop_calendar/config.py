@@ -71,6 +71,14 @@ for code, name in CROP_CODES.items():
 # Default crops to process (most common ones)
 DEFAULT_CROP_NAMES = ["wheat", "corn", "rice", "soybean"]
 
+# ML imputation configuration
+ML_IMPUTATION_CONFIG = {
+    "pca_variance_retention": 0.999,  # 99.9% variance retention (best performance)
+    "n_neighbors": 3,  # KNN neighbors
+    "weights": "distance",  # Distance-weighted KNN
+    "p": 2,  # Minkowski distance metric
+}
+
 
 class CropCalendarConfig(ProcessingConfig):
     """Configuration for crop calendar data processing"""

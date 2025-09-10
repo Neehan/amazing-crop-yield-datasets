@@ -321,12 +321,28 @@ class CropCalendarProcessor(BaseProcessor):
         # Report statistics
         original_count = len(crop_calendar_df)
         imputed_count = len(imputed_df)
-        new_records = imputed_count - original_count
+
+        # Count how many records were actually imputed (had zero area and got monthly values filled)
+        zero_area_records = (crop_calendar_df["total_area"] == 0.0).sum()
+
+        # Check how many zero-area records now have non-zero monthly values (indicating imputation)
+        zero_area_mask = imputed_df["total_area"] == 0.0
+        imputed_records = 0
+        if zero_area_mask.any():
+            # Check if any monthly values are non-zero for zero-area records
+            monthly_cols = [col for col in imputed_df.columns if "month_" in col]
+            has_monthly_data = (imputed_df.loc[zero_area_mask, monthly_cols] > 0).any(
+                axis=1
+            )
+            imputed_records = has_monthly_data.sum()
 
         logger.info(f"ML imputation results for {crop_name}:")
         logger.info(f"  Original records: {original_count}")
-        logger.info(f"  New imputed records: {new_records}")
+        logger.info(f"  Records with zero area: {zero_area_records}")
+        logger.info(f"  Records imputed (got monthly values): {imputed_records}")
         logger.info(f"  Total records: {imputed_count}")
-        logger.info(f"  Coverage improvement: {new_records/original_count*100:.1f}%")
+        logger.info(
+            f"  Coverage improvement: {imputed_records/original_count*100:.1f}%"
+        )
 
         return imputed_df

@@ -82,6 +82,10 @@ python -m cli.process_soil --country "$COUNTRY" --admin-level $ADMIN_LEVEL
 echo "Starting final dataset aggregation for $COUNTRY..."
 python -m cli.process_datasaver --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --admin-level $ADMIN_LEVEL --chunk-size 50
 
+# Process crop calendar data
+echo "Starting crop calendar processing for $COUNTRY..."
+python -m cli.process_crop_calendar --country "$COUNTRY" --admin-level $ADMIN_LEVEL
+
 echo "All processing completed for $COUNTRY"
 echo "Intermediate files are in data/$COUNTRY/intermediate/"
 echo "Final merged datasets are in data/$COUNTRY/final/"

@@ -7,8 +7,11 @@ from pathlib import Path
 from typing import List, Tuple, Optional, Dict
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
+
+from src.processing.crop_calendar.config import ML_IMPUTATION_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,13 @@ class CropCalendarMLImputation:
         self.planted_model = None
         self.harvested_model = None
         self.feature_columns = None
+        self.pca_models = {}  # Store PCA models for each group
+
+        # Load ML imputation configuration
+        self.pca_variance_retention = ML_IMPUTATION_CONFIG["pca_variance_retention"]
+        self.n_neighbors = ML_IMPUTATION_CONFIG["n_neighbors"]
+        self.weights = ML_IMPUTATION_CONFIG["weights"]
+        self.p = ML_IMPUTATION_CONFIG["p"]
 
     def _load_features_data(self, year: int) -> pd.DataFrame:
         """Load land surface and weather data for the specified year"""
@@ -101,7 +111,7 @@ class CropCalendarMLImputation:
 
         for df in dataframes[1:]:
             common_cols_df = [col for col in common_cols if col in df.columns]
-            features_df = features_df.merge(df, on=common_cols_df, how="outer")
+            features_df = features_df.merge(df, on=common_cols_df, how="inner")
 
         logger.info(f"Loaded {len(features_df)} administrative units for year {year}")
         return features_df
@@ -183,6 +193,118 @@ class CropCalendarMLImputation:
         )
         return feature_columns
 
+    def _apply_group_pca(self, features_df: pd.DataFrame) -> pd.DataFrame:
+        """Apply group-wise PCA to reduce noise while keeping coordinates raw"""
+        features_df = features_df.copy()
+
+        # Define feature groups
+        feature_groups = {
+            "weather": ["t2m_min", "t2m_max", "precipitation"],
+            "land_surface": ["ndvi", "lai_low", "lai_high"],
+            "soil": [
+                "clay",
+                "sand",
+                "silt",
+                "ph_h2o",
+                "organic_carbon",
+                "bulk_density",
+            ],
+        }
+
+        # Keep coordinates as raw features
+        coord_cols = ["latitude", "longitude"]
+        pca_features = []
+
+        for group_name, group_prefixes in feature_groups.items():
+            # Find all columns for this group
+            group_cols = []
+            for prefix in group_prefixes:
+                group_cols.extend(
+                    [col for col in features_df.columns if col.startswith(f"{prefix}_")]
+                )
+
+            if not group_cols:
+                logger.warning(f"No columns found for group {group_name}")
+                continue
+
+            # Extract group data
+            group_data = features_df[group_cols].values
+
+            # Check if we have enough data
+            if group_data.shape[0] < 2 or group_data.shape[1] < 2:
+                logger.warning(
+                    f"Not enough data for PCA on group {group_name}, keeping original features"
+                )
+                pca_features.extend(group_cols)
+                continue
+
+            # Apply PCA to the group
+            pca_data, pca = self._apply_pca_to_group(group_data, group_cols, group_name)
+
+            # Store PCA model for later use
+            self.pca_models[group_name] = pca
+
+            # Create new column names and add to dataframe
+            n_components = pca_data.shape[1]
+            new_cols = [f"{group_name}_pca_{i+1}" for i in range(n_components)]
+
+            # Create DataFrame with PCA data and concatenate to avoid fragmentation
+            pca_df = pd.DataFrame(pca_data, columns=new_cols, index=features_df.index)
+            features_df = pd.concat([features_df, pca_df], axis=1)
+
+            pca_features.extend(new_cols)
+
+        logger.info(
+            f"Group {group_name}: {len(group_cols)} features -> {n_components} PCA components ({self.pca_variance_retention*100:.1f}% variance)"
+        )
+
+        # Add coordinates as raw features
+        pca_features.extend(coord_cols)
+
+        # Select only PCA features and coordinates
+        final_features = [col for col in pca_features if col in features_df.columns]
+
+        logger.info(
+            f"Group-wise PCA complete: {len(final_features)} final features (including {len(coord_cols)} raw coordinates)"
+        )
+        return features_df[
+            final_features + ["country", "admin_level_1", "admin_level_2"]
+        ]
+
+    def _fill_nan_values(
+        self, group_data: np.ndarray, group_cols: List[str], group_name: str
+    ) -> np.ndarray:
+        """Fill NaN values using forward fill and backward fill for temporal data"""
+        if not np.isnan(group_data).any():
+            return group_data
+
+        logger.info(
+            f"Filling {np.isnan(group_data).sum()} NaN values in {group_name} group with forward fill"
+        )
+
+        # Convert to DataFrame for easier ffill operation
+        group_df = pd.DataFrame(group_data, columns=group_cols)
+        # Forward fill first, then backward fill for any remaining NaN
+        group_df = group_df.ffill(axis=1).bfill(axis=1)
+
+        return group_df.values
+
+    def _apply_pca_to_group(
+        self,
+        group_data: np.ndarray,
+        group_cols: List[str],
+        group_name: str,
+    ) -> Tuple[np.ndarray, PCA]:
+        """Apply PCA to a feature group with configured variance retention"""
+        # Fill NaN values
+        group_data_clean = self._fill_nan_values(group_data, group_cols, group_name)
+
+        # Apply PCA with configured variance retention
+        pca = PCA(n_components=self.pca_variance_retention, random_state=42)
+        pca_data = pca.fit_transform(group_data_clean)
+
+        return pca_data, pca
+
     def load_features_data(self, year: int = 2000) -> pd.DataFrame:
         """Load aggregated features data for the specified year from intermediate directory"""
         features_df = self._load_features_data(year)
@@ -190,21 +312,25 @@ class CropCalendarMLImputation:
         return features_df
 
     def prepare_features(self, features_df: pd.DataFrame) -> pd.DataFrame:
-        """Prepare feature columns for ML training with proper scaling"""
+        """Prepare feature columns for ML training with group-wise PCA and scaling"""
         features_df = features_df.copy()
-        feature_columns = self._get_feature_columns(features_df)
 
-        # Create features DataFrame
-        features_subset = features_df[
-            ["country", "admin_level_1", "admin_level_2"] + feature_columns
-        ].copy()
+        # Apply group-wise PCA
+        features_df = self._apply_group_pca(features_df)
+
+        # Get feature columns (excluding metadata columns)
+        feature_columns = [
+            col
+            for col in features_df.columns
+            if col not in ["country", "admin_level_1", "admin_level_2"]
+        ]
 
         # Remove rows with any missing values
-        features_subset = features_subset.dropna()
+        features_subset = features_df.dropna()
         self.feature_columns = feature_columns
 
         logger.info(
-            f"Prepared {len(feature_columns)} features for {len(features_subset)} administrative units"
+            f"Prepared {len(feature_columns)} features (after group-wise PCA) for {len(features_subset)} administrative units"
         )
         return pd.DataFrame(features_subset)
 
@@ -235,7 +361,7 @@ class CropCalendarMLImputation:
         return y
 
     def _apply_threshold_and_normalize(
-        self, y: np.ndarray, threshold: float = 0.1
+        self, y: np.ndarray, threshold: float = 0.01
     ) -> np.ndarray:
         """Zero out small values and renormalize to 1"""
         y[y < threshold] = 0.0
@@ -268,9 +394,10 @@ class CropCalendarMLImputation:
 
         # Train KNN with MultiOutputRegressor
         knn = KNeighborsRegressor(
-            n_neighbors=5,
-            weights="distance",
+            n_neighbors=self.n_neighbors,
+            weights=self.weights,
             algorithm="auto",
+            p=self.p,
             n_jobs=-1,
         )
 
@@ -406,6 +533,8 @@ class CropCalendarMLImputation:
         missing_features = features_df_renamed[
             features_identifiers.isin(matching_units)
         ].copy()
+
+        # The features are already processed with PCA, so we can use them directly
 
         # Prepare feature matrix
         feature_cols = [
