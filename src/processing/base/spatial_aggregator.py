@@ -211,7 +211,7 @@ class SpatialAggregator:
         area_weights_file = self.admin_mask_dir / f"area_weights_{grid_shape}.npy"
 
         if admin_mask_file.exists() and area_weights_file.exists():
-            logger.info(f"Loading cached admin boundary mask for grid {grid_shape}...")
+            logger.debug(f"Loading cached admin boundary mask for grid {grid_shape}...")
             admin_mask = self._load_mask_from_netcdf(admin_mask_file, "admin_mask")
             self.area_weights = np.load(area_weights_file)
             return admin_mask

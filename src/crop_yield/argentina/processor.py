@@ -17,6 +17,7 @@ from src.crop_yield.argentina.models import (
     RAW_DATA_COLUMNS,
     COUNTRY_NAME,
 )
+from src.crop_yield.argentina.name_mapping import ArgentinaNameMapper
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,18 @@ def load_crop_data(crop_file: Path) -> pd.DataFrame:
     else:
         raise ValueError("Yield column not found in the data")
 
-    return df
+    # Drop rows where yield is missing or zero
+    initial_count = len(df)
+    df = df.dropna(subset=["yield"])  # Remove missing
+    df = df[df["yield"] > 0]  # Remove zero yields
+    final_count = len(df)
+
+    if initial_count > final_count:
+        logger.info(
+            f"Dropped {initial_count - final_count} ({((initial_count - final_count) / initial_count * 100):.1f}%) rows with missing or zero yield"
+        )
+
+    return pd.DataFrame(df)
 
 
 def filter_departments_by_quality(df: pd.DataFrame) -> pd.DataFrame:
@@ -112,22 +124,38 @@ def filter_departments_by_quality(df: pd.DataFrame) -> pd.DataFrame:
 
 def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
     """Process a single crop file."""
-    # Load data
-    df = load_crop_data(crop_file)
+    # Load GADM names for mapping
+    import geopandas as gpd
 
-    # Get crop name
-    crop_spanish = df["crop"].iloc[0]
-    if crop_spanish not in CROP_NAME_MAPPING:
-        raise ValueError(f"Unknown crop: {crop_spanish}")
+    boundaries = gpd.read_file("data/argentina/gadm/gadm41_ARG.gpkg", layer="ADM_ADM_2")
+    gadm_admin1 = set(boundaries["NAME_1"].unique())
+    gadm_admin2 = set(boundaries["NAME_2"].unique())
 
-    crop_english = CROP_NAME_MAPPING[crop_spanish]
+    # Get crop name from file path (e.g. wheat.csv -> wheat)
+    crop_english = crop_file.stem  # Gets filename without extension
     logger.info(f"Processing {crop_english}")
 
-    # Calculate missing data stats on ORIGINAL data before any filtering
-    total_records_original = len(df)
-    missing_yield_original = df["yield"].isna().sum()
+    # Initialize name mapper
+    name_mapper = ArgentinaNameMapper(gadm_admin1, gadm_admin2)
+
+    # Load data
+    df = load_crop_data(crop_file)
+    # Calculate missing data stats on RAW data before any cleaning
+    raw_df = pd.read_csv(crop_file, sep=";", encoding="latin1")
+    raw_df.columns = raw_df.columns.str.strip().str.replace('"', "")
+    column_mapping = {
+        raw: std for std, raw in RAW_DATA_COLUMNS.items() if raw in raw_df.columns
+    }
+    raw_df = raw_df.rename(columns=column_mapping)
+    if "yield" in raw_df.columns:
+        raw_df["yield"] = pd.to_numeric(raw_df["yield"], errors="coerce")
+
+    total_records_original = len(raw_df)
+    missing_yield_original = raw_df["yield"].isna().sum()
+    zero_yield_original = (raw_df["yield"] == 0).sum()
+    bad_yield_original = missing_yield_original + zero_yield_original
     missing_pct_original = (
-        (missing_yield_original / total_records_original * 100)
+        (bad_yield_original / total_records_original * 100)
         if total_records_original > 0
         else 0
     )
@@ -135,12 +163,20 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
     # Filter by quality
     df_filtered = filter_departments_by_quality(df)
 
+    # Map administrative names to GADM standard
+    df_filtered["admin_level_1"] = df_filtered["province"].apply(
+        lambda x: name_mapper.map_admin_name(x, 1)
+    )
+    df_filtered["admin_level_2"] = df_filtered["department"].apply(
+        lambda x: name_mapper.map_admin_name(x, 2)
+    )
+
     # Create output
     output_df = pd.DataFrame(
         {
             "country": COUNTRY_NAME,
-            "admin_level_1": df_filtered["province"],
-            "admin_level_2": df_filtered["department"],
+            "admin_level_1": df_filtered["admin_level_1"],
+            "admin_level_2": df_filtered["admin_level_2"],
             "year": df_filtered["year"],
             f"{crop_english}_yield": df_filtered["yield"],
         }
@@ -149,14 +185,18 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
     # Sort and save
     output_df = output_df.sort_values(["admin_level_1", "admin_level_2", "year"])
 
-    min_year = output_df["year"].min()
-    max_year = output_df["year"].max()
-    output_file = output_dir / f"crop_{crop_english}_yield_{min_year}-{max_year}.csv"
+    output_file = output_dir / f"crop_{crop_english}_yield.csv"
     output_df.to_csv(output_file, index=False)
 
+    final_departments = (
+        output_df[["admin_level_1", "admin_level_2"]].drop_duplicates().shape[0]
+    )
+
+    min_year = output_df["year"].min()
+    max_year = output_df["year"].max()
     logger.info(
         f"Processed {crop_english}: {len(output_df):,} records ({min_year}-{max_year}), "
-        f"{missing_pct_original:.2f}% missing yield (original data)"
+        f"{final_departments} departments, {missing_pct_original:.2f}% missing/zero yield in raw data"
     )
 
     return output_file

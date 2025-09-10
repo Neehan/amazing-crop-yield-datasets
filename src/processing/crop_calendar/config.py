@@ -61,6 +61,8 @@ CROP_CODES = {
     52: "others_annual",
 }
 
+TEST_SIZE = 0.3
+
 # Reverse mapping for crop names to codes
 CROP_NAME_TO_CODES = {}
 for code, name in CROP_CODES.items():
@@ -107,14 +109,14 @@ class CropCalendarConfig(ProcessingConfig):
         if not final_dir.exists():
             return DEFAULT_CROP_NAMES  # Default fallback
 
-        crop_files = list(final_dir.glob("crop_*_yield_*.csv"))
+        crop_files = list(final_dir.glob("crop_*_yield.csv"))
         crops = []
 
         for file_path in crop_files:
-            # Extract crop name from filename like "crop_wheat_yield_1970-2025.csv"
+            # Extract crop name from filename like "crop_wheat_yield.csv"
             filename = file_path.stem
-            if filename.startswith("crop_") and "_yield_" in filename:
-                crop_name = filename.split("_yield_")[0].replace("crop_", "")
+            if filename.startswith("crop_") and filename.endswith("_yield"):
+                crop_name = filename.replace("crop_", "").replace("_yield", "")
                 # Convert underscores to single words (e.g., "sugar_cane" -> "sugarcane")
                 crop_name = crop_name.replace("_", "")
 

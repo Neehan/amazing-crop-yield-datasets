@@ -4,6 +4,9 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 import pandas as pd
+import xarray as xr
+import numpy as np
+from tqdm import tqdm
 
 from src.processing.base.processor import BaseProcessor
 from src.processing.base.spatial_aggregator import SpatialAggregator
@@ -83,8 +86,8 @@ class CropCalendarProcessor(BaseProcessor):
         Returns:
             Path to aggregated CSV file
         """
-        # Check for cached result
-        final_dir = Path("data") / self.country_full_name.lower() / "final"
+        # Check for cached result using base config
+        final_dir = self.config.get_final_directory()
         final_dir.mkdir(parents=True, exist_ok=True)
         output_filename = f"crop_calendar_{crop_name}.csv"
         output_path = final_dir / output_filename
@@ -92,68 +95,17 @@ class CropCalendarProcessor(BaseProcessor):
         if output_path.exists():
             logger.info(f"Using cached result: {output_path}")
             return output_path
-
-        # Load NetCDF and check if it has data
-        import xarray as xr
-
         with xr.open_dataset(netcdf_path) as ds:
-            # Check if dataset has any non-zero area
             if ds.area.sum() == 0:
-                logger.warning(
+                raise ValueError(
                     f"No data found for {crop_name} in {self.country_full_name}"
                 )
-                return None
 
-        # Use custom spatial aggregation for crop calendar data
         area_df = self._aggregate_spatial_data(netcdf_path, "area")
-
         if area_df.empty:
-            logger.warning(f"No area data after aggregation for {crop_name}")
-            return None
+            raise ValueError(f"No area data after aggregation for {crop_name}")
 
-        # Aggregate monthly planted and harvested data directly from main NetCDF
-        planted_dfs = []
-        harvested_dfs = []
-
-        import xarray as xr
-
-        with xr.open_dataset(netcdf_path) as ds:
-            for month in range(1, 13):
-                # Planted data for this month
-                month_planted = ds.planted.isel(month=month - 1)
-                temp_planted_ds = xr.Dataset({"planted": month_planted})
-                temp_planted_path = (
-                    netcdf_path.parent / f"temp_planted_month_{month}.nc"
-                )
-                temp_planted_ds.to_netcdf(temp_planted_path)
-
-                planted_df = self._aggregate_spatial_data(temp_planted_path, "planted")
-                if not planted_df.empty:
-                    planted_df[f"planted_month_{month}"] = planted_df["value"]
-                    planted_dfs.append(
-                        planted_df[["admin_id", f"planted_month_{month}"]]
-                    )
-
-                temp_planted_path.unlink()
-
-                # Harvested data for this month
-                month_harvested = ds.harvested.isel(month=month - 1)
-                temp_harvested_ds = xr.Dataset({"harvested": month_harvested})
-                temp_harvested_path = (
-                    netcdf_path.parent / f"temp_harvested_month_{month}.nc"
-                )
-                temp_harvested_ds.to_netcdf(temp_harvested_path)
-
-                harvested_df = self._aggregate_spatial_data(
-                    temp_harvested_path, "harvested"
-                )
-                if not harvested_df.empty:
-                    harvested_df[f"harvested_month_{month}"] = harvested_df["value"]
-                    harvested_dfs.append(
-                        harvested_df[["admin_id", f"harvested_month_{month}"]]
-                    )
-
-                temp_harvested_path.unlink()
+        planted_dfs, harvested_dfs = self._process_monthly_data(netcdf_path)
 
         # Combine all data
         result_df = area_df[
@@ -225,8 +177,6 @@ class CropCalendarProcessor(BaseProcessor):
         self, netcdf_path: Path, variable_name: str
     ) -> pd.DataFrame:
         """Custom spatial aggregation for crop calendar data (no time dimension)"""
-        import xarray as xr
-        import numpy as np
 
         with xr.open_dataset(netcdf_path) as ds:
             # Get the data variable
@@ -283,66 +233,120 @@ class CropCalendarProcessor(BaseProcessor):
 
             return pd.DataFrame(results)
 
+    def _process_monthly_data(self, netcdf_path: Path) -> tuple[list, list]:
+        """Process monthly planted and harvested data from NetCDF"""
+
+        planted_dfs = []
+        harvested_dfs = []
+
+        with xr.open_dataset(netcdf_path) as ds:
+            for month in tqdm(range(1, 13), desc="Processing monthly data"):
+                # Process planted data
+                planted_df = self._process_monthly_variable(
+                    ds, "planted", month, netcdf_path.parent
+                )
+                if planted_df is not None:
+                    planted_dfs.append(planted_df)
+
+                # Process harvested data
+                harvested_df = self._process_monthly_variable(
+                    ds, "harvested", month, netcdf_path.parent
+                )
+                if harvested_df is not None:
+                    harvested_dfs.append(harvested_df)
+
+        return planted_dfs, harvested_dfs
+
+    def _process_monthly_variable(
+        self, ds: xr.Dataset, variable_name: str, month: int, temp_dir: Path
+    ) -> Optional[pd.DataFrame]:
+        """Process a single monthly variable (planted or harvested)
+
+        Args:
+            ds: xarray Dataset containing the data
+            variable_name: Name of the variable to process ('planted' or 'harvested')
+            month: Month number (1-12)
+            temp_dir: Directory for temporary files
+
+        Returns:
+            DataFrame with admin_id and monthly column, or None if empty
+        """
+        month_data = ds[variable_name].isel(month=month - 1)
+        temp_ds = xr.Dataset({variable_name: month_data})
+        temp_path = temp_dir / f"temp_{variable_name}_month_{month}.nc"
+        temp_ds.to_netcdf(temp_path)
+
+        df = self._aggregate_spatial_data(temp_path, variable_name)
+        temp_path.unlink()
+
+        if not df.empty:
+            df[f"{variable_name}_month_{month}"] = df["value"]
+            return pd.DataFrame(df[["admin_id", f"{variable_name}_month_{month}"]])
+
+        raise ValueError(f"No data found for {variable_name} in month {month}")
+
+    def _get_admin_units_from_df(self, df: pd.DataFrame, col1: str, col2: str) -> set:
+        """Extract unique admin units from DataFrame columns"""
+        return set(df[[col1, col2]].apply(lambda x: (x[col1], x[col2]), axis=1))
+
+    def _filter_by_yield_data(
+        self, crop_calendar_df: pd.DataFrame, crop_name: str
+    ) -> pd.DataFrame:
+        """Filter admin units to only those that have yield data for the specific crop"""
+        yield_file = self.config.get_final_directory() / f"crop_{crop_name}_yield.csv"
+        yield_df = pd.read_csv(yield_file)
+
+        yield_admin_units = self._get_admin_units_from_df(
+            yield_df, "admin_level_1", "admin_level_2"
+        )
+        crop_calendar_admin_units = self._get_admin_units_from_df(
+            crop_calendar_df, "admin_level_1_name", "admin_level_2_name"
+        )
+
+        common_admin_units = yield_admin_units.intersection(crop_calendar_admin_units)
+        mask = crop_calendar_df[["admin_level_1_name", "admin_level_2_name"]].apply(
+            lambda x: (x["admin_level_1_name"], x["admin_level_2_name"])
+            in common_admin_units,
+            axis=1,
+        )
+
+        filtered_df = pd.DataFrame(crop_calendar_df[mask].copy())
+        logger.info(
+            f"Yield filtering for {crop_name}: {len(crop_calendar_df)} -> {len(filtered_df)} admin units"
+        )
+        return filtered_df
+
     def _apply_ml_imputation(
         self, crop_calendar_df: pd.DataFrame, crop_name: str
     ) -> pd.DataFrame:
-        """Apply ML imputation to fill missing crop calendar data
+        """Apply ML imputation to fill missing crop calendar data"""
+        filtered_df = self._filter_by_yield_data(crop_calendar_df, crop_name)
 
-        Args:
-            crop_calendar_df: Crop calendar DataFrame
-            crop_name: Name of the crop
-
-        Returns:
-            DataFrame with imputed data
-        """
-        # Initialize ML imputation
         ml_imputation = CropCalendarMLImputation(
             country=self.country_full_name,
             admin_level=self.admin_level,
-            data_dir=Path("data"),
+            data_dir=self.config.data_dir,
         )
 
-        # Create temporary file for ML imputation
         temp_path = (
-            Path("data")
-            / self.country_full_name.lower()
-            / "intermediate"
-            / "crop_calendar"
+            self.config.get_processed_subdirectory("crop_calendar")
             / f"temp_crop_calendar_{crop_name}.csv"
         )
-        crop_calendar_df.to_csv(temp_path, index=False)
+        filtered_df.to_csv(temp_path, index=False)
 
-        # Apply ML imputation (use 2000 to match MIRCA2000 crop calendar data)
         imputed_df = ml_imputation.impute_crop_calendar(temp_path, year=2000)
-
-        # Clean up temporary file
         temp_path.unlink()
 
-        # Report statistics
-        original_count = len(crop_calendar_df)
-        imputed_count = len(imputed_df)
-
-        # Count how many records were actually imputed (had zero area and got monthly values filled)
-        zero_area_records = (crop_calendar_df["total_area"] == 0.0).sum()
-
-        # Check how many zero-area records now have non-zero monthly values (indicating imputation)
-        zero_area_mask = imputed_df["total_area"] == 0.0
-        imputed_records = 0
-        if zero_area_mask.any():
-            # Check if any monthly values are non-zero for zero-area records
-            monthly_cols = [col for col in imputed_df.columns if "month_" in col]
-            has_monthly_data = (imputed_df.loc[zero_area_mask, monthly_cols] > 0).any(
-                axis=1
-            )
-            imputed_records = has_monthly_data.sum()
-
-        logger.info(f"ML imputation results for {crop_name}:")
-        logger.info(f"  Original records: {original_count}")
-        logger.info(f"  Records with zero area: {zero_area_records}")
-        logger.info(f"  Records imputed (got monthly values): {imputed_records}")
-        logger.info(f"  Total records: {imputed_count}")
-        logger.info(
-            f"  Coverage improvement: {imputed_records/original_count*100:.1f}%"
+        zero_area_records = (filtered_df["total_area"] == 0.0).sum()
+        monthly_cols = [col for col in imputed_df.columns if "month_" in col]
+        imputed_records = (
+            (imputed_df.loc[imputed_df["total_area"] == 0.0, monthly_cols] > 0)
+            .any(axis=1)
+            .sum()
         )
 
+        logger.info(
+            f"ML imputation for {crop_name}: raw: {len(crop_calendar_df)} -> filtered by yield: {len(filtered_df)} -> imputed: {len(imputed_df)} "
+            f"({zero_area_records} zero area, {imputed_records} imputed)"
+        )
         return imputed_df

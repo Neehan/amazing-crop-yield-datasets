@@ -19,7 +19,7 @@ CROP_NAME_MAPPING: Dict[str, str] = {
 SUPPORTED_CROPS: Set[str] = set(CROP_NAME_MAPPING.keys())
 
 # Data quality thresholds
-DATA_QUALITY_THRESHOLD = 0.50  # 25% of data must be present (75% missing allowed)
+DATA_QUALITY_THRESHOLD = 0.25  # 25% of data must be present (75% missing allowed)
 EVALUATION_YEARS = 20  # Evaluate data quality over the last 20 years
 
 # Column names in the raw data

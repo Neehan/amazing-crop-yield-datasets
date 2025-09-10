@@ -96,10 +96,7 @@ class GZConverter:
             return cache_path
 
         # Combine and weight the data
-        combined_data = self._combine_and_weight_data(irrigated_data, rainfed_data)
-
-        # Convert to monthly planted/harvested columns
-        monthly_data = self._convert_to_monthly_columns(combined_data)
+        monthly_data = self._combine_and_weight_data(irrigated_data, rainfed_data)
 
         # Create NetCDF
         self._create_netcdf(monthly_data, cache_path, crop_name, "weighted")
@@ -110,11 +107,7 @@ class GZConverter:
     def _load_and_filter_gz_data(self, crop_code: int) -> pd.DataFrame:
         """Load GZ file and filter for country and crop code"""
         # Determine file path - try both resolutions
-        gz_file_5min = self.mirca_dir / "CELL_SPECIFIC_CROPPING_CALENDARS.TXT.gz"
-        gz_file_30min = self.mirca_dir / "CELL_SPECIFIC_CROPPING_CALENDARS_30MN.TXT.gz"
-
-        # Use 5-minute resolution if available, otherwise 30-minute
-        gz_file = gz_file_5min if gz_file_5min.exists() else gz_file_30min
+        gz_file = self.mirca_dir / "CELL_SPECIFIC_CROPPING_CALENDARS.TXT.gz"
 
         if not gz_file.exists():
             raise FileNotFoundError(f"MIRCA2000 data not found at {self.mirca_dir}")
@@ -122,7 +115,7 @@ class GZConverter:
         logger.info(f"Loading data from {gz_file.name}")
 
         # Read GZ file in chunks to handle memory
-        chunk_size = 100000
+        chunk_size = 500000
         filtered_chunks = []
 
         with gzip.open(gz_file, "rt") as f:
@@ -183,14 +176,14 @@ class GZConverter:
     def _combine_and_weight_data(
         self, irrigated_data: pd.DataFrame, rainfed_data: pd.DataFrame
     ) -> pd.DataFrame:
-        """Combine irrigated and rainfed data, weighting by area to create unified crop calendar
+        """Combine irrigated and rainfed data, creating area-weighted monthly fractions
 
         Args:
             irrigated_data: Irrigated crop data
             rainfed_data: Rainfed crop data
 
         Returns:
-            Combined and weighted data
+            Combined data with monthly fractions
         """
         logger.info("Combining and weighting irrigated and rainfed data")
 
@@ -203,31 +196,12 @@ class GZConverter:
         # Combine both datasets
         combined_data = pd.concat([irrigated_data, rainfed_data], ignore_index=True)
 
-        # Group by location (lat, lon) and sum areas, weighted average start/end months
+        # Group by location and calculate monthly fractions
         grouped = (
             combined_data.groupby(["lat", "lon"])
-            .agg(
-                {
-                    "area": "sum",  # Total area
-                    "start": lambda x: np.average(
-                        x, weights=combined_data.loc[x.index, "area"]
-                    ),
-                    "end": lambda x: np.average(
-                        x, weights=combined_data.loc[x.index, "area"]
-                    ),
-                    "cell_id": "first",
-                    "row": "first",
-                    "column": "first",
-                    "crop": "first",
-                    "subcrop": "first",
-                }
-            )
+            .apply(self._calculate_monthly_fractions)
             .reset_index()
         )
-
-        # Round start/end months to nearest integer
-        grouped["start"] = grouped["start"].round().astype(int)
-        grouped["end"] = grouped["end"].round().astype(int)
 
         logger.info(
             f"Combined data: {len(combined_data)} records -> {len(grouped)} unique locations"
@@ -235,36 +209,42 @@ class GZConverter:
 
         return grouped
 
-    def _convert_to_monthly_columns(self, data: pd.DataFrame) -> pd.DataFrame:
-        """Convert start/end months to monthly planted/harvested columns as fractions"""
-        logger.info("Converting to monthly planted/harvested columns")
+    def _calculate_monthly_fractions(self, group: pd.DataFrame) -> pd.Series:
+        """Calculate monthly planted/harvested fractions for a location group"""
+        total_area = group["area"].sum()
 
-        # Create monthly columns - initialize all to 0
-        monthly_cols = {}
+        # Initialize result series
+        result = pd.Series(
+            index=["area", "cell_id", "row", "column", "crop", "subcrop", "year"]
+            + [f"planted_month_{i}" for i in range(1, 13)]
+            + [f"harvested_month_{i}" for i in range(1, 13)]
+        )
+
+        # Set basic info
+        result["area"] = total_area
+        result["cell_id"] = group["cell_id"].iloc[0]
+        result["row"] = group["row"].iloc[0]
+        result["column"] = group["column"].iloc[0]
+        result["crop"] = group["crop"].iloc[0]
+        result["subcrop"] = group["subcrop"].iloc[0]
+        result["year"] = 2000
+
+        # Initialize monthly fractions
         for month in range(1, 13):
-            monthly_cols[f"planted_month_{month}"] = np.zeros(len(data))
-            monthly_cols[f"harvested_month_{month}"] = np.zeros(len(data))
+            result[f"planted_month_{month}"] = 0.0
+            result[f"harvested_month_{month}"] = 0.0
 
-        # Fill in planted and harvested months based on start/end
-        for idx, row in data.iterrows():
+        # Calculate fractions for each record in the group
+        for _, row in group.iterrows():
             start_month = int(row["start"])
             end_month = int(row["end"])
+            area = row["area"]
 
-            # Each crop gets a fraction of 1.0 for planting and harvesting
-            # Since MIRCA2000 only gives start/end months, we assume all planting
-            # happens in start month and all harvesting in end month
-            monthly_cols[f"planted_month_{start_month}"][idx] = 1.0
-            monthly_cols[f"harvested_month_{end_month}"][idx] = 1.0
+            # Add this record's area fraction to the appropriate months
+            result[f"planted_month_{start_month}"] += area / max(total_area, 1)
+            result[f"harvested_month_{end_month}"] += area / max(total_area, 1)
 
-        # Create new dataframe with original columns plus monthly columns
-        result_data = data.copy()
-        for col, values in monthly_cols.items():
-            result_data[col] = values
-
-        # Add dummy year column for spatial aggregation compatibility
-        result_data["year"] = 2000
-
-        return result_data
+        return result
 
     def _create_netcdf(
         self,
