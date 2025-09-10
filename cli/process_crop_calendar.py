@@ -16,9 +16,9 @@ def add_crop_calendar_arguments(parser):
     """Add crop calendar-specific arguments"""
     parser.add_argument(
         "--crops",
-        nargs="+",
-        default=["wheat"],
-        help="Crop names to process (default: wheat)",
+        nargs="*",
+        default=None,
+        help="Crop names to process (if not specified, auto-detect from final directory)",
     )
 
 

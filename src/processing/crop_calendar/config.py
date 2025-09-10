@@ -1,14 +1,14 @@
 """Crop calendar processing configuration"""
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from src.processing.base.config import ProcessingConfig
 
 # MIRCA2000 crop codes mapping
 CROP_CODES = {
     1: "wheat",
-    2: "maize",
+    2: "corn",
     3: "rice",
     4: "barley",
     5: "rye",
@@ -34,7 +34,7 @@ CROP_CODES = {
     25: "fodder_grasses",
     26: "others_annual",
     27: "wheat",
-    28: "maize",
+    28: "corn",
     29: "rice",
     30: "barley",
     31: "rye",
@@ -69,7 +69,7 @@ for code, name in CROP_CODES.items():
     CROP_NAME_TO_CODES[name].append(code)
 
 # Default crops to process (most common ones)
-DEFAULT_CROP_NAMES = ["wheat", "maize", "rice", "soybean"]
+DEFAULT_CROP_NAMES = ["wheat", "corn", "rice", "soybean"]
 
 
 class CropCalendarConfig(ProcessingConfig):
@@ -78,16 +78,46 @@ class CropCalendarConfig(ProcessingConfig):
     def __init__(
         self,
         country: str,
-        crop_names: List[str],
+        crop_names: Optional[List[str]],
         admin_level: int,
         data_dir: Path,
         output_format: str,
         debug: bool,
     ):
         super().__init__(country, admin_level, data_dir, output_format, debug)
-        self.crop_names = crop_names or DEFAULT_CROP_NAMES
+        self.crop_names = crop_names or self._auto_detect_crops()
         # Convert crop names to codes internally
         self.crop_codes = self._convert_names_to_codes(self.crop_names)
+
+    def _auto_detect_crops(self) -> List[str]:
+        """Auto-detect crops from yield data in final directory
+
+        Returns:
+            List of crop names found in final directory
+        """
+        final_dir = self.data_dir / self.country.lower() / "final"
+        if not final_dir.exists():
+            return DEFAULT_CROP_NAMES  # Default fallback
+
+        crop_files = list(final_dir.glob("crop_*_yield_*.csv"))
+        crops = []
+
+        for file_path in crop_files:
+            # Extract crop name from filename like "crop_wheat_yield_1970-2025.csv"
+            filename = file_path.stem
+            if filename.startswith("crop_") and "_yield_" in filename:
+                crop_name = filename.split("_yield_")[0].replace("crop_", "")
+                # Convert underscores to single words (e.g., "sugar_cane" -> "sugarcane")
+                crop_name = crop_name.replace("_", "")
+
+                # Check if crop name is valid
+                if crop_name in CROP_NAME_TO_CODES:
+                    crops.append(crop_name)
+
+        if not crops:
+            return DEFAULT_CROP_NAMES  # Default fallback
+
+        return sorted(list(set(crops)))  # Remove duplicates and sort
 
     def validate(self) -> None:
         """Validate crop calendar specific configuration"""

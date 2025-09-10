@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Tuple, Optional, Dict
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
@@ -32,8 +32,8 @@ class CropCalendarMLImputation:
         self.harvested_model = None
         self.feature_columns = None
 
-    def _load_land_surface_data(self, year: int) -> pd.DataFrame:
-        """Load land surface data for the specified year"""
+    def _load_features_data(self, year: int) -> pd.DataFrame:
+        """Load land surface and weather data for the specified year"""
         features_dir = (
             self.data_dir / self.country.lower() / "intermediate" / "aggregated"
         )
@@ -47,18 +47,33 @@ class CropCalendarMLImputation:
             f"Loading features from intermediate aggregated data for year {year}"
         )
 
-        land_surface_files = [
+        # Define all feature files to load
+        feature_files = [
+            # Land surface data
             f"land_surface_{year}-{year}_ndvi_weekly_weighted_admin{self.admin_level}.csv",
             f"land_surface_{year}-{year}_lai_low_weekly_weighted_admin{self.admin_level}.csv",
             f"land_surface_{year}-{year}_lai_high_weekly_weighted_admin{self.admin_level}.csv",
+            # Weather data
+            f"weather_{year}-{year}_t2m_min_weekly_weighted_admin{self.admin_level}.csv",
+            f"weather_{year}-{year}_t2m_max_weekly_weighted_admin{self.admin_level}.csv",
+            f"weather_{year}-{year}_precipitation_weekly_weighted_admin{self.admin_level}.csv",
+            # Soil data (no year column)
+            "soil_clay_weighted_admin2.csv",
+            "soil_sand_weighted_admin2.csv",
+            "soil_silt_weighted_admin2.csv",
+            "soil_ph_h2o_weighted_admin2.csv",
+            "soil_organic_carbon_weighted_admin2.csv",
+            "soil_bulk_density_weighted_admin2.csv",
         ]
 
         dataframes = []
-        for file_pattern in land_surface_files:
+        for file_pattern in feature_files:
             file_path = features_dir / file_pattern
             if file_path.exists():
                 df = pd.read_csv(file_path)
-                df["year"] = year
+                # Only add year column for time-series data (not soil)
+                if not file_pattern.startswith("soil_"):
+                    df["year"] = year
                 dataframes.append(df)
                 logger.info(f"Loaded {file_path.name}: {len(df)} records")
             else:
@@ -69,14 +84,19 @@ class CropCalendarMLImputation:
 
         # Merge all dataframes
         features_df = dataframes[0]
+
+        # Define merge columns - soil data doesn't have year
         merge_cols = [
             "country",
             "admin_level_1",
             "admin_level_2",
-            "year",
             "latitude",
             "longitude",
         ]
+        # Add year to merge cols only if it exists in the first dataframe
+        if "year" in features_df.columns:
+            merge_cols.append("year")
+
         common_cols = [col for col in merge_cols if col in features_df.columns]
 
         for df in dataframes[1:]:
@@ -92,28 +112,80 @@ class CropCalendarMLImputation:
         for col in ndvi_cols:
             if col in features_df.columns:
                 features_df[col] = features_df[col] / 10000.0
-                logger.info(f"Scaled NDVI column {col} by dividing by 10000")
         return features_df
 
     def _get_feature_columns(self, features_df: pd.DataFrame) -> List[str]:
-        """Get feature column names for land surface data"""
+        """Get feature column names for land surface, weather, and soil data"""
         feature_columns = []
-        land_surface_features = ["ndvi", "lai_low", "lai_high"]
 
-        for feature in land_surface_features:
+        # Time-series features (weekly data)
+        time_series_features = [
+            "ndvi",
+            "lai_low",
+            "lai_high",
+            "t2m_min",
+            "t2m_max",
+            "precipitation",
+        ]
+
+        for feature in time_series_features:
             for week in range(1, 53):
                 col_name = f"{feature}_week_{week}"
                 if col_name in features_df.columns:
                     feature_columns.append(col_name)
 
+        # Soil features (static data)
+        soil_features = [
+            "clay_0_5cm",
+            "clay_5_15cm",
+            "clay_15_30cm",
+            "clay_30_60cm",
+            "clay_60_100cm",
+            "clay_100_200cm",
+            "sand_0_5cm",
+            "sand_5_15cm",
+            "sand_15_30cm",
+            "sand_30_60cm",
+            "sand_60_100cm",
+            "sand_100_200cm",
+            "silt_0_5cm",
+            "silt_5_15cm",
+            "silt_15_30cm",
+            "silt_30_60cm",
+            "silt_60_100cm",
+            "silt_100_200cm",
+            "ph_h2o_0_5cm",
+            "ph_h2o_5_15cm",
+            "ph_h2o_15_30cm",
+            "ph_h2o_30_60cm",
+            "ph_h2o_60_100cm",
+            "ph_h2o_100_200cm",
+            "organic_carbon_0_5cm",
+            "organic_carbon_5_15cm",
+            "organic_carbon_15_30cm",
+            "organic_carbon_30_60cm",
+            "organic_carbon_60_100cm",
+            "organic_carbon_100_200cm",
+            "bulk_density_0_5cm",
+            "bulk_density_5_15cm",
+            "bulk_density_15_30cm",
+            "bulk_density_30_60cm",
+            "bulk_density_60_100cm",
+            "bulk_density_100_200cm",
+        ]
+
+        for feature in soil_features:
+            if feature in features_df.columns:
+                feature_columns.append(feature)
+
         logger.info(
-            f"Using only NDVI, LAI_LOW, LAI_HIGH features ({len(feature_columns)} total)"
+            f"Using NDVI, LAI_LOW, LAI_HIGH, T2M_MIN, T2M_MAX, PRECIPITATION, SOIL features ({len(feature_columns)} total)"
         )
         return feature_columns
 
     def load_features_data(self, year: int = 2000) -> pd.DataFrame:
         """Load aggregated features data for the specified year from intermediate directory"""
-        features_df = self._load_land_surface_data(year)
+        features_df = self._load_features_data(year)
         features_df = self._scale_ndvi(features_df)
         return features_df
 
@@ -134,7 +206,7 @@ class CropCalendarMLImputation:
         logger.info(
             f"Prepared {len(feature_columns)} features for {len(features_subset)} administrative units"
         )
-        return features_subset
+        return pd.DataFrame(features_subset)
 
     def prepare_targets(self, crop_calendar_df: pd.DataFrame) -> pd.DataFrame:
         """Prepare target variables (planting/harvesting distributions) for ML training"""
@@ -155,7 +227,7 @@ class CropCalendarMLImputation:
         logger.info(
             f"Prepared targets for {len(targets_df)} administrative units with crop calendar data"
         )
-        return targets_df
+        return pd.DataFrame(targets_df)
 
     def _normalize_probability_distribution(self, y: np.ndarray) -> np.ndarray:
         """Normalize array to sum to 1 (probability distribution)"""
@@ -185,7 +257,7 @@ class CropCalendarMLImputation:
     def _train_single_model(
         self, X_scaled: np.ndarray, y: np.ndarray, target_type: str
     ) -> MultiOutputRegressor:
-        """Train a single Random Forest model"""
+        """Train a single KNN model"""
         # Normalize targets to ensure they sum to 1
         y = self._normalize_probability_distribution(y)
 
@@ -194,17 +266,15 @@ class CropCalendarMLImputation:
             X_scaled, y, test_size=0.2, random_state=42
         )
 
-        # Train Random Forest with MultiOutputRegressor
-        rf = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=5,
-            min_samples_leaf=2,
-            random_state=42,
+        # Train KNN with MultiOutputRegressor
+        knn = KNeighborsRegressor(
+            n_neighbors=5,
+            weights="distance",
+            algorithm="auto",
             n_jobs=-1,
         )
 
-        model = MultiOutputRegressor(rf)
+        model = MultiOutputRegressor(knn)
         model.fit(X_train, y_train)
 
         # Evaluate model
@@ -229,7 +299,7 @@ class CropCalendarMLImputation:
     def train_models(
         self, features_df: pd.DataFrame, targets_df: pd.DataFrame
     ) -> Dict[str, MultiOutputRegressor]:
-        """Train Random Forest models for planted and harvested distributions"""
+        """Train KNN models for planted and harvested distributions"""
         # Merge features and targets
         features_df_renamed = features_df.rename(
             columns={
