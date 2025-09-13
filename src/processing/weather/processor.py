@@ -94,7 +94,7 @@ class WeatherProcessor(BaseProcessor):
             )
 
             # Save output file
-            filename = f"weather_{self.config.start_year}-{self.config.end_year-1}_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
+            filename = f"weather_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
                 pivoted_df, filename, self.config.output_format, intermediate_dir
             )

@@ -128,7 +128,7 @@ class DataSaverProcessor(BaseProcessor):
         self, csv_dir: Path
     ) -> Set[Tuple[str, str, str]]:
         """Get all locations from weather CSV files"""
-        # Weather files: weather_YYYY-YYYY_variable_weekly_weighted_adminX.csv
+        # Weather files: weather_variable_weekly_weighted_adminX.csv
         pattern = f"weather_*_weekly_weighted_admin{self.config.admin_level}.csv"
         files = self.get_csv_files_by_pattern(csv_dir, pattern)
 
@@ -155,7 +155,7 @@ class DataSaverProcessor(BaseProcessor):
         self, csv_dir: Path
     ) -> Set[Tuple[str, str, str]]:
         """Get all locations from land surface CSV files"""
-        # Land surface files: land_surface_YYYY-YYYY_variable_weekly_weighted_adminX.csv
+        # Land surface files: land_surface_variable_weekly_weighted_adminX.csv
         pattern = f"land_surface_*_weekly_weighted_admin{self.config.admin_level}.csv"
         files = self.get_csv_files_by_pattern(csv_dir, pattern)
 
@@ -211,7 +211,7 @@ class DataSaverProcessor(BaseProcessor):
         """Load weather data for specified locations"""
         csv_dir = aggregated_dir
 
-        # Weather files: weather_YYYY-YYYY_variable_weekly_weighted_adminX.csv
+        # Weather files: weather_variable_weekly_weighted_adminX.csv
         pattern = f"weather_*_weekly_weighted_admin{self.config.admin_level}.csv"
         files = self.get_csv_files_by_pattern(csv_dir, pattern)
 
@@ -258,7 +258,7 @@ class DataSaverProcessor(BaseProcessor):
         """Load land surface data for specified locations"""
         csv_dir = aggregated_dir
 
-        # Land surface files: land_surface_YYYY-YYYY_variable_weekly_weighted_adminX.csv
+        # Land surface files: land_surface_variable_weekly_weighted_adminX.csv
         pattern = f"land_surface_*_weekly_weighted_admin{self.config.admin_level}.csv"
         files = self.get_csv_files_by_pattern(csv_dir, pattern)
 

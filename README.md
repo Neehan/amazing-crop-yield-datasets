@@ -307,11 +307,20 @@ Administrative-Level CSV Files
 
 ## Output
 
-Creates CSV files like:
+Creates intermediate CSV files like:
 ```
-data/usa/intermediate/aggregated/weather_2020-2021_temp_min_weekly_weighted_admin2.csv
-data/usa/intermediate/aggregated/weather_2020-2021_temp_max_weekly_weighted_admin2.csv
-data/usa/intermediate/aggregated/weather_2020-2021_precip_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/weather_temp_min_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/weather_temp_max_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/weather_precipitation_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/land_surface_ndvi_weekly_weighted_admin2.csv
+data/usa/intermediate/aggregated/soil_clay_weighted_admin2.csv
+```
+
+And final merged feature datasets:
+```
+data/usa/final/features/features_chunk_001.csv
+data/usa/final/features/features_chunk_002.csv
+data/usa/final/features/features_chunk_003.csv
 ```
 
 ## Directory Structure
@@ -336,8 +345,9 @@ data/{country}/
 │   ├── soil/              # Processed soil data
 │   └── aggregated/        # Aggregated CSV files
 └── final/                 # Final processed datasets
-    ├── crop_<cropname*>_yield.csv     # Processed crop yield data
-    └── merged_data_chunk_*.csv    # Final merged datasets
+    ├── features/              # ML-ready feature datasets
+    │   └── features_chunk_*.csv    # Final merged feature datasets (chunked)
+    └── crop_<cropname*>_yield.csv     # Processed crop yield data
 ```
 
 Each file contains columns:

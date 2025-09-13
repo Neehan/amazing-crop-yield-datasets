@@ -61,7 +61,7 @@ CROP_CODES = {
     52: "others_annual",
 }
 
-TEST_SIZE = 0.3
+TEST_SIZE = 0.2
 
 # Reverse mapping for crop names to codes
 CROP_NAME_TO_CODES = {}
@@ -79,6 +79,8 @@ ML_IMPUTATION_CONFIG = {
     "n_neighbors": 3,  # KNN neighbors
     "weights": "distance",  # Distance-weighted KNN
     "p": 2,  # Minkowski distance metric
+    "test_size": 0.2,  # Train-test split ratio
+    "random_state": 42,  # Random state for reproducibility
 }
 
 

@@ -1,478 +1,316 @@
-"""Simple ML imputation for missing crop calendar data"""
+"""ML imputation for missing crop calendar data using land surface features"""
 
 import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import List, Tuple, Dict
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
-from sklearn.multioutput import MultiOutputRegressor
 from sklearn.decomposition import PCA
+from sklearn.model_selection import train_test_split
+from sklearn.multioutput import MultiOutputRegressor
 
-from src.processing.crop_calendar.config import ML_IMPUTATION_CONFIG, TEST_SIZE
+from src.processing.crop_calendar.config import ML_IMPUTATION_CONFIG
 
 logger = logging.getLogger(__name__)
 
 
 class CropCalendarMLImputation:
-    """Simple ML-based imputation for missing crop calendar data"""
+    """ML-based imputation for missing crop calendar data using environmental features"""
 
     def __init__(self, country: str, admin_level: int, data_dir: Path):
         self.country = country
         self.admin_level = admin_level
         self.data_dir = data_dir
         self.scaler = StandardScaler()
-        self.planted_model = None
-        self.harvested_model = None
+        self.models = {}
         self.pca_models = {}
-        self.feature_columns = None
-
+        
         # Load config
-        self.pca_variance = ML_IMPUTATION_CONFIG["pca_variance_retention"]
-        self.n_neighbors = ML_IMPUTATION_CONFIG["n_neighbors"]
-        self.weights = ML_IMPUTATION_CONFIG["weights"]
+        config = ML_IMPUTATION_CONFIG
+        self.pca_variance_retention = config["pca_variance_retention"]
+        self.n_neighbors = config["n_neighbors"]
+        self.weights = config["weights"]
+        self.p = config["p"]
+        self.test_size = config["test_size"]
+        self.random_state = config["random_state"]
 
-    def load_features(self, year: int = 2000) -> pd.DataFrame:
-        """Load all feature data from intermediate directories"""
-        weather_df = self._load_weather_data(year)
-        land_surface_df = self._load_land_surface_data(year)
-        soil_df = self._load_soil_data()
+    def _load_and_merge_features(self, year: int) -> pd.DataFrame:
+        """Load and merge all feature files for the specified year"""
+        features_dir = self.data_dir / self.country.lower() / "intermediate" / "aggregated"
+        
+        if not features_dir.exists():
+            raise FileNotFoundError(f"Intermediate aggregated directory not found: {features_dir}")
 
-        # Merge: weather has lat/lon, others don't need them
-        features_df = weather_df.merge(
-            land_surface_df.drop(columns=["latitude", "longitude"]),
-            on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-            how="inner",
-        ).merge(
-            soil_df.drop(columns=["latitude", "longitude"]),
-            on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-            how="inner",
-        )
+        # Define feature files to load
+        feature_files = {
+            # Land surface data (with year)
+            f"land_surface_{year}-{year}_ndvi_weekly_weighted_admin{self.admin_level}.csv": True,
+            f"land_surface_{year}-{year}_lai_low_weekly_weighted_admin{self.admin_level}.csv": True,
+            f"land_surface_{year}-{year}_lai_high_weekly_weighted_admin{self.admin_level}.csv": True,
+            # Weather data (with year)
+            f"weather_{year}-{year}_t2m_min_weekly_weighted_admin{self.admin_level}.csv": True,
+            f"weather_{year}-{year}_t2m_max_weekly_weighted_admin{self.admin_level}.csv": True,
+            f"weather_{year}-{year}_precipitation_weekly_weighted_admin{self.admin_level}.csv": True,
+            # Soil data (no year)
+            "soil_clay_weighted_admin2.csv": False,
+            "soil_sand_weighted_admin2.csv": False,
+            "soil_silt_weighted_admin2.csv": False,
+            "soil_ph_h2o_weighted_admin2.csv": False,
+            "soil_organic_carbon_weighted_admin2.csv": False,
+            "soil_bulk_density_weighted_admin2.csv": False,
+        }
 
-        # Apply PCA
-        features_df = self._apply_pca(features_df)
+        dataframes = []
+        for file_pattern, has_year in feature_files.items():
+            file_path = features_dir / file_pattern
+            if file_path.exists():
+                df = pd.read_csv(file_path)
+                if has_year:
+                    df["year"] = year
+                dataframes.append(df)
+                logger.info(f"Loaded {file_path.name}: {len(df)} records")
 
-        logger.info(f"Loaded features for {len(features_df)} admin units")
+        if not dataframes:
+            raise ValueError(f"No feature files found for year {year}")
+
+        # Merge all dataframes
+        merge_cols = ["country", "admin_level_1", "admin_level_2", "latitude", "longitude"]
+        features_df = dataframes[0]
+        
+        for df in dataframes[1:]:
+            # Use common columns present in both dataframes
+            common_cols = [col for col in merge_cols if col in features_df.columns and col in df.columns]
+            if "year" in features_df.columns and "year" in df.columns:
+                common_cols.append("year")
+            features_df = features_df.merge(df, on=common_cols, how="inner")
+
+        # Scale NDVI values
+        ndvi_cols = [col for col in features_df.columns if col.startswith("ndvi_week_")]
+        features_df[ndvi_cols] = features_df[ndvi_cols] / 10000.0
+
+        logger.info(f"Loaded {len(features_df)} administrative units for year {year}")
         return features_df
 
-    def _load_weather_data(self, year: int) -> pd.DataFrame:
-        """Load weather data from intermediate/weather"""
-        weather_dir = self.data_dir / self.country.lower() / "intermediate" / "weather"
-
-        weather_vars = ["t2m_min", "t2m_max", "precipitation"]
-        weather_dfs = []
-
-        for var in weather_vars:
-            file_path = (
-                weather_dir
-                / f"{year}_{var}_weekly_weighted_admin{self.admin_level}.csv"
-            )
-            df = pd.read_csv(file_path)
-            df["week"] = pd.to_datetime(df["time"]).dt.isocalendar().week
-
-            # Pivot to wide format with lat/lon in index
-            pivot_df = df.pivot_table(
-                index=[
-                    "country_name",
-                    "admin_level_1_name",
-                    "admin_level_2_name",
-                    "latitude",
-                    "longitude",
-                ],
-                columns="week",
-                values="value",
-                aggfunc="mean",
-            )
-            pivot_df.columns = [f"{var}_week_{col}" for col in pivot_df.columns]
-            pivot_df = pivot_df.reset_index()
-            weather_dfs.append(pivot_df)
-
-        # Merge weather variables, first has lat/lon, rest don't need them
-        weather_df = weather_dfs[0]
-        for df in weather_dfs[1:]:
-            weather_df = weather_df.merge(
-                df.drop(columns=["latitude", "longitude"]),
-                on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-                how="inner",
-            )
-
-        return weather_df
-
-    def _load_land_surface_data(self, year: int) -> pd.DataFrame:
-        """Load land surface data from intermediate/weather"""
-        weather_dir = self.data_dir / self.country.lower() / "intermediate" / "weather"
-
-        land_vars = ["ndvi", "lai_low", "lai_high"]
-        land_dfs = []
-
-        for var in land_vars:
-            file_path = (
-                weather_dir
-                / f"{year}_{var}_weekly_weighted_admin{self.admin_level}.csv"
-            )
-            df = pd.read_csv(file_path)
-            df["week"] = pd.to_datetime(df["time"]).dt.isocalendar().week
-
-            # Scale NDVI
-            if var == "ndvi":
-                df["value"] = df["value"] / 10000.0
-
-            # Pivot to wide format with lat/lon in index
-            pivot_df = df.pivot_table(
-                index=[
-                    "country_name",
-                    "admin_level_1_name",
-                    "admin_level_2_name",
-                    "latitude",
-                    "longitude",
-                ],
-                columns="week",
-                values="value",
-                aggfunc="mean",
-            )
-            pivot_df.columns = [f"{var}_week_{col}" for col in pivot_df.columns]
-            pivot_df = pivot_df.reset_index()
-            land_dfs.append(pivot_df)
-
-        # Merge land surface variables, first has lat/lon, rest don't need them
-        land_df = land_dfs[0]
-        for df in land_dfs[1:]:
-            land_df = land_df.merge(
-                df.drop(columns=["latitude", "longitude"]),
-                on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-                how="inner",
-            )
-
-        return land_df
-
-    def _load_soil_data(self) -> pd.DataFrame:
-        """Load soil data from intermediate/aggregated"""
-        aggregated_dir = (
-            self.data_dir / self.country.lower() / "intermediate" / "aggregated"
-        )
-
-        # All 10 soil variables
-        soil_vars = [
-            "bulk_density",
-            "cec",
-            "clay",
-            "coarse_fragments",
-            "nitrogen",
-            "organic_carbon",
-            "organic_carbon_density",
-            "ph_h2o",
-            "sand",
-            "silt",
-        ]
-
-        soil_dfs = []
-        for var in soil_vars:
-            file_path = (
-                aggregated_dir / f"soil_{var}_weighted_admin{self.admin_level}.csv"
-            )
-            if not file_path.exists():
-                continue
-
-            df = pd.read_csv(file_path)
-            # Rename admin columns
-            df = df.rename(
-                columns={
-                    "country": "country_name",
-                    "admin_level_1": "admin_level_1_name",
-                    "admin_level_2": "admin_level_2_name",
-                }
-            )
-
-            # Keep admin + depth columns, rename depth columns
-            depth_cols = [col for col in df.columns if col.endswith("cm")]
-            keep_cols = [
-                "country_name",
-                "admin_level_1_name",
-                "admin_level_2_name",
-                "latitude",
-                "longitude",
-            ] + depth_cols
-            df = df[keep_cols]
-
-            for col in depth_cols:
-                df = df.rename(columns={col: f"{var}_{col}"})
-
-            soil_dfs.append(df)
-
-        # Merge all soil variables, first has lat/lon, rest don't need them
-        soil_df = soil_dfs[0]
-        for df in soil_dfs[1:]:
-            soil_df = soil_df.merge(
-                df.drop(columns=["latitude", "longitude"]),
-                on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-                how="inner",
-            )
-
-        return soil_df
-
-    def _apply_pca(self, features_df: pd.DataFrame) -> pd.DataFrame:
-        """Apply PCA to feature groups"""
+    def _apply_group_pca(self, features_df: pd.DataFrame) -> pd.DataFrame:
+        """Apply group-wise PCA to reduce dimensionality"""
+        features_df = features_df.copy()
+        
         feature_groups = {
             "weather": ["t2m_min", "t2m_max", "precipitation"],
             "land_surface": ["ndvi", "lai_low", "lai_high"],
-            "soil": [
-                "bulk_density",
-                "cec",
-                "clay",
-                "coarse_fragments",
-                "nitrogen",
-                "organic_carbon",
-                "organic_carbon_density",
-                "ph_h2o",
-                "sand",
-                "silt",
-            ],
+            "soil": ["clay", "sand", "silt", "ph_h2o", "organic_carbon", "bulk_density"],
         }
 
-        pca_features = []
-        logger.info(f"Applying PCA to retain {self.pca_variance * 100:.2f}% variance")
+        pca_features = ["latitude", "longitude"]  # Keep coordinates as raw features
+        
         for group_name, prefixes in feature_groups.items():
-            # Get all columns for this group
+            # Find all columns for this group
             group_cols = []
             for prefix in prefixes:
-                group_cols.extend(
-                    [col for col in features_df.columns if col.startswith(f"{prefix}_")]
-                )
+                group_cols.extend([col for col in features_df.columns if col.startswith(f"{prefix}_")])
 
-            if len(group_cols) < 2:
-                pca_features.extend(group_cols)
+            if not group_cols:
                 continue
 
+            # Apply PCA to the group
+            group_data = features_df[group_cols].values
+            
+            # Fill NaN values with forward/backward fill
+            if np.isnan(group_data).any():
+                group_df = pd.DataFrame(group_data, columns=group_cols)
+                group_data = group_df.ffill(axis=1).bfill(axis=1).values
+
             # Apply PCA
-            group_data = features_df[group_cols].fillna(0).values
-            pca = PCA(n_components=self.pca_variance, random_state=42)
+            pca = PCA(n_components=self.pca_variance_retention, random_state=self.random_state)
             pca_data = pca.fit_transform(group_data)
+            self.pca_models[group_name] = pca
 
-            # Store PCA model
-            self.pca_models[group_name] = (pca, group_cols)
-
-            # Add PCA features
-            pca_cols = [f"{group_name}_pca_{i+1}" for i in range(pca_data.shape[1])]
-            pca_df = pd.DataFrame(pca_data, columns=pca_cols, index=features_df.index)
+            # Add PCA components to dataframe
+            n_components = pca_data.shape[1]
+            new_cols = [f"{group_name}_pca_{i+1}" for i in range(n_components)]
+            pca_df = pd.DataFrame(pca_data, columns=new_cols, index=features_df.index)
             features_df = pd.concat([features_df, pca_df], axis=1)
-            pca_features.extend(pca_cols)
+            pca_features.extend(new_cols)
 
-            logger.info(
-                f"{group_name}: {len(group_cols)} -> {pca_data.shape[1]} components"
-            )
+            logger.info(f"Group {group_name}: {len(group_cols)} -> {n_components} PCA components")
 
-        # Keep admin info, coordinates, and PCA features
-        keep_cols = [
-            "country_name",
-            "admin_level_1_name",
-            "admin_level_2_name",
-            "latitude",
-            "longitude",
-        ] + pca_features
-        return features_df[keep_cols]
+        # Return only PCA features and admin identifiers
+        keep_cols = pca_features + ["country", "admin_level_1", "admin_level_2"]
+        return features_df[[col for col in keep_cols if col in features_df.columns]]
 
-    def prepare_data(
-        self, features_df: pd.DataFrame, crop_calendar_df: pd.DataFrame
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        """Prepare feature matrix and target arrays"""
-        crop_with_data = crop_calendar_df[crop_calendar_df["total_area"] > 0].copy()
-        merged_df = features_df.merge(
-            crop_with_data.drop(columns=["latitude", "longitude"]),
+    def _prepare_data(self, features_df: pd.DataFrame, targets_df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare and split data for training"""
+        # Rename features columns to match targets
+        features_renamed = features_df.rename(columns={
+            "country": "country_name",
+            "admin_level_1": "admin_level_1_name", 
+            "admin_level_2": "admin_level_2_name",
+        })
+
+        # Merge features and targets
+        merged_df = features_renamed.merge(
+            targets_df,
             on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-            how="inner",
+            how="inner"
         )
 
-        # Get feature columns (exclude admin, target, and other metadata columns)
-        exclude_cols = {
-            "country_name",
-            "admin_level_1_name",
-            "admin_level_2_name",
-            "crop_name",
-            "total_area",
-        }
+        if merged_df.empty:
+            raise ValueError("No matching data between features and targets")
 
-        # Add target columns to exclusion
-        for prefix in ["planted", "harvested"]:
-            for month in range(1, 13):
-                exclude_cols.add(f"{prefix}_month_{month}")
+        # Prepare feature matrix
+        feature_cols = [col for col in merged_df.columns 
+                       if col not in ["country_name", "admin_level_1_name", "admin_level_2_name"] 
+                       and "month_" not in col]
+        
+        X = merged_df[feature_cols].values
+        
+        # Prepare target matrices
+        planted_cols = [f"planted_month_{month}" for month in range(1, 13)]
+        harvested_cols = [f"harvested_month_{month}" for month in range(1, 13)]
+        
+        y_planted = merged_df[planted_cols].values.astype(np.float64)
+        y_harvested = merged_df[harvested_cols].values.astype(np.float64)
 
-        feature_cols = [col for col in merged_df.columns if col not in exclude_cols]
-        self.feature_columns = feature_cols
-        X = merged_df[feature_cols].fillna(0).values
+        logger.info(f"Prepared data: {len(merged_df)} samples, {len(feature_cols)} features")
+        return X, y_planted, y_harvested, merged_df
 
-        # Get target columns
-        target_cols = []
-        for prefix in ["planted", "harvested"]:
-            target_cols.extend([f"{prefix}_month_{month}" for month in range(1, 13)])
+    def _normalize_predictions(self, y: np.ndarray) -> np.ndarray:
+        """Normalize predictions to sum to 1 and apply threshold"""
+        y = np.maximum(y, 0)  # Ensure non-negative
+        y[y < 0.01] = 0.0  # Apply threshold
+        row_sums = np.sum(y, axis=1, keepdims=True)
+        row_sums = np.where(row_sums == 0, 1, row_sums)  # Avoid division by zero
+        return y / row_sums
 
-        y = merged_df[target_cols].fillna(0).values
-
-        logger.info(
-            f"Prepared {X.shape[0]} samples with {X.shape[1]} features and {y.shape[1]} targets"
-        )
-        return X, y
-
-    def normalize_predictions(
-        self, y: np.ndarray, threshold: float = 0.01
-    ) -> np.ndarray:
-        """Normalize predictions to sum to 1 and remove small values"""
-        n_months = 12
-        result = np.zeros_like(y)
-
-        for i in range(0, y.shape[1], n_months):
-            y_type = y[:, i : i + n_months]
-            y_type[y_type < threshold] = 0.0
-            row_sums = y_type.sum(axis=1, keepdims=True)
-            row_sums[row_sums == 0] = 1
-            result[:, i : i + n_months] = y_type / row_sums
-
-        return result
-
-    def train_and_evaluate(self, X: np.ndarray, y: np.ndarray) -> None:
-        """Train separate models for planted and harvested with train/test split and show metrics"""
+    def _train_model(self, X: np.ndarray, y: np.ndarray, target_type: str) -> MultiOutputRegressor:
+        """Train a single KNN model with train-test split"""
+        # Normalize targets
+        y = self._normalize_predictions(y)
+        
+        # Train-test split
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=TEST_SIZE, random_state=42
+            X, y, test_size=self.test_size, random_state=self.random_state
         )
-
+        
+        # Scale features
         X_train_scaled = self.scaler.fit_transform(X_train)
         X_test_scaled = self.scaler.transform(X_test)
-
-        # Split targets into planted (0:12) and harvested (12:24)
-        y_train_planted = y_train[:, :12]
-        y_train_harvested = y_train[:, 12:]
-        y_test_planted = y_test[:, :12]
-        y_test_harvested = y_test[:, 12:]
-
-        # Train separate KNN models
-        knn_planted = KNeighborsRegressor(
-            n_neighbors=self.n_neighbors, weights=self.weights, n_jobs=-1
-        )
-        knn_harvested = KNeighborsRegressor(
-            n_neighbors=self.n_neighbors, weights=self.weights, n_jobs=-1
-        )
         
-        planted_model = MultiOutputRegressor(knn_planted)
-        harvested_model = MultiOutputRegressor(knn_harvested)
-        
-        planted_model.fit(X_train_scaled, y_train_planted)
-        harvested_model.fit(X_train_scaled, y_train_harvested)
-
-        # Predict separately
-        y_pred_planted = planted_model.predict(X_test_scaled)
-        y_pred_harvested = harvested_model.predict(X_test_scaled)
-        
-        # Normalize predictions
-        y_pred_planted = self.normalize_predictions(y_pred_planted)
-        y_pred_harvested = self.normalize_predictions(y_pred_harvested)
-
-        # Overall R² scores
-        r2_planted = r2_score(y_test_planted, y_pred_planted, multioutput="uniform_average")
-        r2_harvested = r2_score(y_test_harvested, y_pred_harvested, multioutput="uniform_average")
-
-        logger.info(
-            f"Test metrics - Planted R²: {r2_planted:.3f}, Harvested R²: {r2_harvested:.3f}"
+        # Train model
+        knn = KNeighborsRegressor(
+            n_neighbors=self.n_neighbors,
+            weights=self.weights,
+            p=self.p,
+            n_jobs=-1
         )
-
-        # Month-over-month breakdown for planted
-        planted_monthly = r2_score(y_test_planted, y_pred_planted, multioutput="raw_values")
-        logger.info(
-            "Planted month-over-month R²:\n *"
-            + "\n *".join(
-                f"  Month {month+1}: {planted_monthly[month]:.3f}"
-                for month in range(12)
-            )
-        )
-
-        # Month-over-month breakdown for harvested
-        harvested_monthly = r2_score(y_test_harvested, y_pred_harvested, multioutput="raw_values")
-        logger.info(
-            "Harvested month-over-month R²:\n *"
-            + "\n *".join(
-                f"  Month {month+1}: {harvested_monthly[month]:.3f}"
-                for month in range(12)
-            )
-        )
-
-        # Train final models on full data
-        X_full_scaled = self.scaler.fit_transform(X)
-        y_planted_full = y[:, :12]
-        y_harvested_full = y[:, 12:]
+        model = MultiOutputRegressor(knn)
+        model.fit(X_train_scaled, y_train)
         
-        self.planted_model = MultiOutputRegressor(knn_planted)
-        self.harvested_model = MultiOutputRegressor(knn_harvested)
+        # Evaluate on test set
+        y_pred = model.predict(X_test_scaled)
+        y_pred = self._normalize_predictions(y_pred)
         
-        self.planted_model.fit(X_full_scaled, y_planted_full)
-        self.harvested_model.fit(X_full_scaled, y_harvested_full)
+        # Calculate R² metrics
+        mse_scores = [np.mean((y_test[:, i] - y_pred[:, i]) ** 2) for i in range(12)]
+        r2_scores = [1 - mse for mse in mse_scores]
+        avg_r2 = np.mean(r2_scores)
+        
+        logger.info(f"Model {target_type}: Average R²={avg_r2:.4f} (monthly R²: {[f'{r2:.3f}' for r2 in r2_scores]})")
+        return model
 
-        logger.info("Trained separate models on full dataset")
+    def train_models(self, features_df: pd.DataFrame, targets_df: pd.DataFrame) -> Dict[str, MultiOutputRegressor]:
+        """Train models for planted and harvested distributions"""
+        X, y_planted, y_harvested, _ = self._prepare_data(features_df, targets_df)
+        
+        models = {}
+        for target_type, y in [("planted", y_planted), ("harvested", y_harvested)]:
+            models[target_type] = self._train_model(X, y, target_type)
+        
+        self.models = models
+        return models
 
-    def predict_missing(
-        self, features_df: pd.DataFrame, crop_calendar_df: pd.DataFrame
-    ) -> pd.DataFrame:
-        """Predict crop calendar for units with total_area = 0"""
+    def predict_missing(self, features_df: pd.DataFrame, crop_calendar_df: pd.DataFrame) -> pd.DataFrame:
+        """Predict crop calendar data for units with total_area=0"""
+        if not self.models:
+            raise ValueError("Models not trained. Call train_models() first.")
+
+        # Find units with no crop data
         no_crop_units = crop_calendar_df[crop_calendar_df["total_area"] == 0.0].copy()
+        logger.info(f"Found {len(no_crop_units)} units with no crop data")
 
         if no_crop_units.empty:
-            logger.info("No units with zero area to impute")
             return crop_calendar_df
 
-        missing_features = features_df.merge(
-            no_crop_units[["country_name", "admin_level_1_name", "admin_level_2_name"]],
-            on=["country_name", "admin_level_1_name", "admin_level_2_name"],
-            how="inner",
-        )
+        # Rename features columns
+        features_renamed = features_df.rename(columns={
+            "country": "country_name",
+            "admin_level_1": "admin_level_1_name",
+            "admin_level_2": "admin_level_2_name",
+        })
 
-        if missing_features.empty:
-            logger.info("No matching features for units with zero area")
+        # Create identifier for matching
+        def create_id(df):
+            return df["admin_level_1_name"] + "_" + df["admin_level_2_name"]
+
+        no_crop_ids = create_id(no_crop_units)
+        features_ids = create_id(features_renamed)
+        matching_ids = no_crop_ids[no_crop_ids.isin(features_ids)]
+
+        if matching_ids.empty:
+            logger.info("No matching features found for units with zero area")
             return crop_calendar_df
 
-        X_missing = missing_features[self.feature_columns].fillna(0).values
+        # Get features for prediction
+        matching_features = features_renamed[features_ids.isin(matching_ids)]
+        feature_cols = [col for col in matching_features.columns 
+                       if col not in ["country_name", "admin_level_1_name", "admin_level_2_name"]]
+        
+        X_missing = matching_features[feature_cols].values
         X_missing_scaled = self.scaler.transform(X_missing)
 
-        # Predict with separate models
-        y_pred_planted = self.planted_model.predict(X_missing_scaled)
-        y_pred_harvested = self.harvested_model.predict(X_missing_scaled)
+        # Make predictions
+        predicted_df = no_crop_units[no_crop_ids.isin(matching_ids)].copy()
         
-        # Normalize predictions separately
-        y_pred_planted = self.normalize_predictions(y_pred_planted)
-        y_pred_harvested = self.normalize_predictions(y_pred_harvested)
-
-        # Update crop calendar dataframe
-        result_df = crop_calendar_df.copy()
-
-        for i, (_, row) in enumerate(missing_features.iterrows()):
-            mask = (
-                (result_df["country_name"] == row["country_name"])
-                & (result_df["admin_level_1_name"] == row["admin_level_1_name"])
-                & (result_df["admin_level_2_name"] == row["admin_level_2_name"])
-            )
-
-            # Update planted months
-            for month in range(1, 13):
-                result_df.loc[mask, f"planted_month_{month}"] = y_pred_planted[i, month - 1]
+        for target_type, model in self.models.items():
+            pred = model.predict(X_missing_scaled)
+            pred = self._normalize_predictions(pred)
             
-            # Update harvested months
             for month in range(1, 13):
-                result_df.loc[mask, f"harvested_month_{month}"] = y_pred_harvested[i, month - 1]
+                predicted_df[f"{target_type}_month_{month}"] = pred[:, month - 1]
 
-        logger.info(f"Imputed crop calendar for {len(missing_features)} units")
-        return result_df
+        # Update original dataframe
+        matching_mask = (crop_calendar_df["total_area"] == 0.0) & \
+                       create_id(crop_calendar_df).isin(matching_ids)
+        
+        crop_calendar_df.loc[matching_mask, predicted_df.columns] = predicted_df
+        
+        logger.info(f"Imputed crop calendar data for {len(predicted_df)} units")
+        return crop_calendar_df
 
-    def impute_crop_calendar(
-        self, crop_calendar_path: Path, year: int = 2000
-    ) -> pd.DataFrame:
-        """Complete imputation pipeline"""
-        logger.info(f"Starting ML imputation for {crop_calendar_path}")
+    def impute_crop_calendar(self, crop_calendar_path: Path, year: int = 2000) -> pd.DataFrame:
+        """Complete pipeline for crop calendar imputation"""
+        logger.info(f"Starting ML imputation for: {crop_calendar_path}")
 
+        # Load data
         crop_calendar_df = pd.read_csv(crop_calendar_path)
-        features_df = self.load_features(year)
+        features_df = self._load_and_merge_features(year)
+        features_df = self._apply_group_pca(features_df)
 
-        X, y = self.prepare_data(features_df, crop_calendar_df)
-        self.train_and_evaluate(X, y)
-        result_df = self.predict_missing(features_df, crop_calendar_df)
+        # Prepare targets
+        target_columns = ["country_name", "admin_level_1_name", "admin_level_2_name"]
+        target_columns.extend([f"{target_type}_month_{month}" 
+                              for target_type in ["planted", "harvested"] 
+                              for month in range(1, 13)])
+        
+        targets_df = crop_calendar_df[target_columns].copy()
+        monthly_cols = [col for col in targets_df.columns if "month_" in col]
+        targets_df = targets_df[targets_df[monthly_cols].sum(axis=1) > 0]
 
-        logger.info("ML imputation complete")
-        return result_df
+        # Train and predict
+        self.train_models(features_df, targets_df)
+        imputed_df = self.predict_missing(features_df, crop_calendar_df)
+
+        logger.info(f"ML imputation complete. Total records: {len(imputed_df)}")
+        return imputed_df

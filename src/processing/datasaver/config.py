@@ -58,4 +58,4 @@ class DataSaverConfig:
     def get_final_directory(self) -> Path:
         """Get the final output directory"""
         country_name = self.country.lower().replace(" ", "_")
-        return self.data_dir / country_name / "final"
+        return self.data_dir / country_name / "final" / "features"

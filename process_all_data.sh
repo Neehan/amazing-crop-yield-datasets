@@ -88,4 +88,4 @@ python -m cli.process_crop_calendar --country "$COUNTRY" --admin-level $ADMIN_LE
 
 echo "All processing completed for $COUNTRY"
 echo "Intermediate files are in data/$COUNTRY/intermediate/"
-echo "Final merged datasets are in data/$COUNTRY/final/"
+echo "Final merged feature datasets are in data/$COUNTRY/final/features/"
