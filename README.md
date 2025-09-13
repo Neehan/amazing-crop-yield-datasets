@@ -11,8 +11,11 @@ pip install -r requirements.txt
 
 Download the HYDE-3.5 cropland mask:
 ```bash
-mkdir -p data/global
-wget https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF/cropland.nc -O data/global/cropland.nc
+mkdir -p data/global/hyde-3.5
+wget https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF/cropland.nc -O data/global/hyde-3.5/cropland.nc
+
+# irrigated fraction of each crop
+wget https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF/total_irrigated.nc -O data/global/hyde-3.5/total_irrigated.nc
 ```
 
 ### Weather Data Setup (CDS API)

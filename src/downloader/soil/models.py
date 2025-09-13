@@ -16,7 +16,6 @@ class SoilProperty(Enum):
     SAND = ("sand", "Proportion of sand particles")
     SILT = ("silt", "Proportion of silt particles")
     ORGANIC_CARBON = ("soc", "Soil organic carbon content")
-    # ORGANIC_CARBON_STOCK = ("ocs", "Soil organic carbon stock")
 
     def __init__(self, code: str, description: str):
         self.code = code
