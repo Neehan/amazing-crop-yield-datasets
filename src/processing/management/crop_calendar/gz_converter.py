@@ -9,7 +9,7 @@ import numpy as np
 from tqdm import tqdm
 
 from src.processing.base.processor import BaseProcessor
-from src.processing.crop_calendar.config import CROP_CODES
+from src.processing.management.crop_calendar.config import CROP_CODES
 from src.utils.geography import Geography
 
 logger = logging.getLogger(__name__)

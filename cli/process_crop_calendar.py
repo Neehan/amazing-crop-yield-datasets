@@ -8,8 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from cli.base_process_cli import run_processor_cli
-from src.processing.crop_calendar.config import CropCalendarConfig
-from src.processing.crop_calendar.processor import CropCalendarProcessor
+from src.processing.management.crop_calendar.config import CropCalendarConfig
+from src.processing.management.crop_calendar.processor import CropCalendarProcessor
 
 
 def add_crop_calendar_arguments(parser):

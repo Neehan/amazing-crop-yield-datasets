@@ -26,7 +26,7 @@ class LandSurfaceProcessor(BaseProcessor):
         )
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
-            self, config.country, cropland_filter=True
+            self, config.country, cropland_filter=True, cache_dir_name="land_surface"
         )
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = LandSurfaceFormatter()

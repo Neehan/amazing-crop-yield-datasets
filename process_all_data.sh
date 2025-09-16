@@ -86,6 +86,10 @@ python -m cli.process_datasaver --country "$COUNTRY" --start-year $START_YEAR --
 echo "Starting crop calendar processing for $COUNTRY..."
 python -m cli.process_crop_calendar --country "$COUNTRY" --admin-level $ADMIN_LEVEL
 
+# Process irrigation data
+echo "Starting irrigation data processing for $COUNTRY..."
+python -m cli.process_irrigation --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --admin-level $ADMIN_LEVEL
+
 echo "All processing completed for $COUNTRY"
 echo "Intermediate files are in data/$COUNTRY/intermediate/"
 echo "Final merged feature datasets are in data/$COUNTRY/final/features/"

@@ -11,7 +11,7 @@ from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 from sklearn.multioutput import MultiOutputRegressor
 
-from src.processing.crop_calendar.config import ML_IMPUTATION_CONFIG
+from src.processing.management.crop_calendar.config import ML_IMPUTATION_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ class CropCalendarMLImputation:
                             f"No data found for year {year} in {file_path}"
                         )
                 dataframes.append(df)
-                logger.info(f"Loaded {file_path.name}: {len(df)} records")
+                logger.debug(f"Loaded {file_path.name}: {len(df)} records")
 
         if not dataframes:
             raise ValueError(f"No feature files found for year {year}")

@@ -35,7 +35,11 @@ class SpatialAggregator:
     """
 
     def __init__(
-        self, base_processor: BaseProcessor, country_param: str, cropland_filter: bool
+        self,
+        base_processor: BaseProcessor,
+        country_param: str,
+        cropland_filter: bool,
+        cache_dir_name: str = "weather",
     ):
         """Initialize with a base processor that provides boundaries
 
@@ -44,6 +48,7 @@ class SpatialAggregator:
             country_param: Country parameter for processing
             cropland_filter: If True, filter aggregation to cropland areas only.
                            If False, aggregate over all valid data areas.
+            cache_dir_name: Name of subdirectory for caching results (default: "weather")
         """
         self.base_processor = base_processor
         self.boundaries = base_processor.boundaries
@@ -56,11 +61,11 @@ class SpatialAggregator:
         intermediate_dir = Path("data") / country_param.lower() / "intermediate"
         self.cropland_mask_dir = intermediate_dir / "cropland_mask"
         self.admin_mask_dir = intermediate_dir / "admin_mask"
-        self.weather_processed_dir = intermediate_dir / "weather"
+        self.processed_dir = intermediate_dir / cache_dir_name
 
         self.cropland_mask_dir.mkdir(parents=True, exist_ok=True)
         self.admin_mask_dir.mkdir(parents=True, exist_ok=True)
-        self.weather_processed_dir.mkdir(parents=True, exist_ok=True)
+        self.processed_dir.mkdir(parents=True, exist_ok=True)
 
         # Load HYDE cropland data once
         self._load_cropland_data()
@@ -157,7 +162,7 @@ class SpatialAggregator:
     def _get_cache_filename(self, variable_name: str, year: int) -> Path:
         """Generate cache filename for spatial aggregation results"""
         filename = f"{year}_{variable_name}_weekly_weighted_admin{self.base_processor.admin_level}.csv"
-        return self.weather_processed_dir / filename
+        return self.processed_dir / filename
 
     def _get_main_data_variable(self, dataset: xr.Dataset) -> xr.DataArray:
         """Extract the main data variable from dataset"""
@@ -238,7 +243,7 @@ class SpatialAggregator:
         # Include grid dimensions in cache filename to avoid conflicts
         grid_shape = f"{len(lats)}x{len(lons)}"
         logger.info(f"Creating cropland masks for {len(all_years)} years...")
-        for year in all_years:
+        for year in tqdm(all_years, desc="Creating cropland masks"):
             cropland_mask_file = (
                 self.cropland_mask_dir / f"cropland_mask_{year}_{grid_shape}.nc"
             )

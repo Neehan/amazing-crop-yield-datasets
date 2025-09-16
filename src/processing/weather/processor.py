@@ -24,7 +24,7 @@ class WeatherProcessor(BaseProcessor):
         )
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
-            self, config.country, cropland_filter=True
+            self, config.country, cropland_filter=True, cache_dir_name="weather"
         )
         self.temporal_aggregator = TemporalAggregator()
         self.formatter = WeatherFormatter()

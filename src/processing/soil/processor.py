@@ -25,7 +25,7 @@ class SoilProcessor(BaseProcessor):
         )
         self.config = config
         self.spatial_aggregator = SpatialAggregator(
-            self, config.country, cropland_filter=False
+            self, config.country, cropland_filter=False, cache_dir_name="soil"
         )
         self.formatter = SoilFormatter()
 

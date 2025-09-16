@@ -10,9 +10,14 @@ from tqdm import tqdm
 
 from src.processing.base.processor import BaseProcessor
 from src.processing.base.spatial_aggregator import SpatialAggregator
-from src.processing.crop_calendar.config import CropCalendarConfig, CROP_CODES
-from src.processing.crop_calendar.gz_converter import GZConverter
-from src.processing.crop_calendar.ml_imputation import CropCalendarMLImputation
+from src.processing.management.crop_calendar.config import (
+    CropCalendarConfig,
+    CROP_CODES,
+)
+from src.processing.management.crop_calendar.gz_converter import GZConverter
+from src.processing.management.crop_calendar.ml_imputation import (
+    CropCalendarMLImputation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +45,7 @@ class CropCalendarProcessor(BaseProcessor):
             base_processor=self,
             country_param=config.country,
             cropland_filter=False,  # No cropland filtering for crop calendar data
+            cache_dir_name="crop_calendar",
         )
 
         logger.info(
@@ -90,7 +96,7 @@ class CropCalendarProcessor(BaseProcessor):
         final_dir = self.config.get_final_directory()
         final_dir.mkdir(parents=True, exist_ok=True)
         output_filename = f"crop_calendar_{crop_name}.csv"
-        output_path = final_dir / output_filename
+        output_path = final_dir / "management" / output_filename
 
         if output_path.exists():
             logger.info(f"Using cached result: {output_path}")
@@ -293,7 +299,9 @@ class CropCalendarProcessor(BaseProcessor):
         self, crop_calendar_df: pd.DataFrame, crop_name: str
     ) -> pd.DataFrame:
         """Filter admin units to only those that have yield data for the specific crop"""
-        yield_file = self.config.get_final_directory() / f"crop_{crop_name}_yield.csv"
+        yield_file = (
+            self.config.get_final_directory() / "crop" / f"crop_{crop_name}_yield.csv"
+        )
         yield_df = pd.read_csv(yield_file)
 
         yield_admin_units = self._get_admin_units_from_df(

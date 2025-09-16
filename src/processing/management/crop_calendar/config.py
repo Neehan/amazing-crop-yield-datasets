@@ -4,6 +4,9 @@ from pathlib import Path
 from typing import List, Optional
 
 from src.processing.base.config import ProcessingConfig
+import logging
+
+logger = logging.getLogger(__name__)
 
 # MIRCA2000 crop codes mapping
 CROP_CODES = {
@@ -70,9 +73,6 @@ for code, name in CROP_CODES.items():
         CROP_NAME_TO_CODES[name] = []
     CROP_NAME_TO_CODES[name].append(code)
 
-# Default crops to process (most common ones)
-DEFAULT_CROP_NAMES = ["wheat", "corn", "rice", "soybean"]
-
 # ML imputation configuration
 ML_IMPUTATION_CONFIG = {
     "pca_variance_retention": 0.999,  # 99.9% variance retention (best performance)
@@ -107,11 +107,12 @@ class CropCalendarConfig(ProcessingConfig):
         Returns:
             List of crop names found in final directory
         """
-        final_dir = self.data_dir / self.country.lower() / "final"
-        if not final_dir.exists():
-            return DEFAULT_CROP_NAMES  # Default fallback
+        crop_dir = self.data_dir / self.country.lower() / "final" / "crop"
+        if not crop_dir.exists():
+            raise ValueError(f"Final crop directory does not exist: {crop_dir}")
 
-        crop_files = list(final_dir.glob("crop_*_yield.csv"))
+        # Look for crop yield files, excluding numbered variants (soybean1, soybean2, etc.)
+        crop_files = list(crop_dir.glob("crop_[a-z_]*_yield.csv"))
         crops = []
 
         for file_path in crop_files:
@@ -119,15 +120,15 @@ class CropCalendarConfig(ProcessingConfig):
             filename = file_path.stem
             if filename.startswith("crop_") and filename.endswith("_yield"):
                 crop_name = filename.replace("crop_", "").replace("_yield", "")
-                # Convert underscores to single words (e.g., "sugar_cane" -> "sugarcane")
-                crop_name = crop_name.replace("_", "")
 
                 # Check if crop name is valid
                 if crop_name in CROP_NAME_TO_CODES:
                     crops.append(crop_name)
 
         if not crops:
-            return DEFAULT_CROP_NAMES  # Default fallback
+            raise ValueError(f"No crops found in final directory: {crop_dir}")
+        else:
+            logger.info(f"Found {len(crops)} crops in final directory: {crops}")
 
         return sorted(list(set(crops)))  # Remove duplicates and sort
 
