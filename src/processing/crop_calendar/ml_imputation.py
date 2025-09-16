@@ -155,7 +155,7 @@ class CropCalendarMLImputation:
 
             # Fill NaN values with forward/backward fill
             if np.isnan(group_data).any():
-                group_df = pd.DataFrame(group_data, columns=group_cols)
+                group_df = pd.DataFrame(group_data, columns=group_cols)  # type: ignore
                 group_data = group_df.ffill(axis=1).bfill(axis=1).values
 
             # Apply PCA
@@ -168,7 +168,7 @@ class CropCalendarMLImputation:
             # Add PCA components to dataframe
             n_components = pca_data.shape[1]
             new_cols = [f"{group_name}_pca_{i+1}" for i in range(n_components)]
-            pca_df = pd.DataFrame(pca_data, columns=new_cols, index=features_df.index)
+            pca_df = pd.DataFrame(pca_data, columns=new_cols, index=features_df.index)  # type: ignore
             features_df = pd.concat([features_df, pca_df], axis=1)
             pca_features.extend(new_cols)
 
@@ -178,7 +178,7 @@ class CropCalendarMLImputation:
 
         # Return only PCA features and admin identifiers
         keep_cols = pca_features + ["country", "admin_level_1", "admin_level_2"]
-        return features_df[[col for col in keep_cols if col in features_df.columns]]
+        return features_df[[col for col in keep_cols if col in features_df.columns]]  # type: ignore
 
     def _prepare_data(
         self, features_df: pd.DataFrame, targets_df: pd.DataFrame
@@ -223,7 +223,7 @@ class CropCalendarMLImputation:
         logger.info(
             f"Prepared data: {len(merged_df)} samples, {len(feature_cols)} features"
         )
-        return X, y_planted, y_harvested, merged_df
+        return X, y_planted, y_harvested, merged_df  # type: ignore
 
     def _normalize_predictions(self, y: np.ndarray) -> np.ndarray:
         """Normalize predictions to sum to 1 and apply threshold"""
@@ -261,7 +261,7 @@ class CropCalendarMLImputation:
         y_pred = self._normalize_predictions(y_pred)
 
         # Calculate R² metrics
-        mse_scores = [np.mean((y_test[:, i] - y_pred[:, i]) ** 2) for i in range(12)]
+        mse_scores = [np.mean((y_test[:, i] - y_pred[:, i]) ** 2) for i in range(12)]  # type: ignore
         r2_scores = [1 - mse for mse in mse_scores]
         avg_r2 = np.mean(r2_scores)
 
@@ -326,7 +326,7 @@ class CropCalendarMLImputation:
             if col not in ["country_name", "admin_level_1_name", "admin_level_2_name"]
         ]
 
-        X_missing = matching_features[feature_cols].values
+        X_missing = matching_features[feature_cols].values  # type: ignore
         X_missing_scaled = self.scaler.transform(X_missing)
 
         # Make predictions
@@ -344,7 +344,7 @@ class CropCalendarMLImputation:
             crop_calendar_df
         ).isin(matching_ids)
 
-        crop_calendar_df.loc[matching_mask, predicted_df.columns] = predicted_df
+        crop_calendar_df.loc[matching_mask, predicted_df.columns] = predicted_df  # type: ignore
 
         logger.info(f"Imputed crop calendar data for {len(predicted_df)} units")
         return crop_calendar_df
@@ -375,8 +375,8 @@ class CropCalendarMLImputation:
         targets_df = targets_df[targets_df[monthly_cols].sum(axis=1) > 0]
 
         # Train and predict
-        self.train_models(features_df, targets_df)
-        imputed_df = self.predict_missing(features_df, crop_calendar_df)
+        self.train_models(features_df, targets_df)  # type: ignore
+        imputed_df = self.predict_missing(features_df, crop_calendar_df)  # type: ignore
 
         logger.info(f"ML imputation complete. Total records: {len(imputed_df)}")
         return imputed_df

@@ -18,6 +18,14 @@ wget https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/
 wget https://geo.public.data.uu.nl/vault-hyde/hyde35_c9_apr2025%5B1749214444%5D/original/gbc2025_7apr_base/NetCDF/total_irrigated.nc -O data/global/hyde-3.5/total_irrigated.nc
 ```
 
+### MIRCA2000 Crop Calendar Setup
+```bash
+mkdir -p data/global/mirca2000-v1.1
+wget https://zenodo.org/records/7422506/files/growing_periods_listed.zip?download=1 -O growing_periods_listed.zip
+unzip -j growing_periods_listed.zip -d data/global/mirca2000-v1.1/
+rm growing_periods_listed.zip
+```
+
 ### Weather Data Setup (CDS API)
 
 Weather data is downloaded directly from the AgERA5 reanalysis dataset. This dataset is public, freely accessible, and can be downloaded in reasonable time.
@@ -73,6 +81,16 @@ Download the FAO fertilizer data from https://www.fao.org/faostat/en/#data/RFN
 
 The data is available post season and there can be a lag of up to 2-3 years. So we recommend fetching the most recent fertilizer data from specific country's government websites.
 
+
+### Crop Data Setup
+Check README file for each country in crop_yield directory. In each country we have admin-2 level
+
+- Crop Yield
+- Planted Area
+- Harvested Area
+- Production
+
+**Note: each crop file without numbers represents the total production. Example: `soybean.csv` in argentina represents total soybean production for the season, `soybean1.csv` represents the 1st cycle, and `soybean2.csv` represents the 2nd cycle.
 
 ## Usage
 

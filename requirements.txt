@@ -13,3 +13,4 @@ rioxarray>=0.15.0
 shapely>=2.0.0
 soilgrids>=0.1.4
 pyproj>=3.4.0 
+sidrapy

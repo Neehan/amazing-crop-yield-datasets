@@ -16,12 +16,14 @@ URL: [https://datosestimaciones.magyp.gob.ar/reportes.php?reporte=Estimaciones](
 2. **Select Crop (Cultivo)**
    - wheat = Trigo total
    - soybean = Soja total
+   - soybean1 = Soja 1ra
+   - soybean2 = Soja 2da
    - corn = Maíz
    - sunflower = Girasol
 
 3. **Select Variable (Variable)**
-   - Choose **Rendimiento** = Yield (kg per hectare).  
-   - Other options: *Producción* (Production), *Superficie sembrada* (Area planted).
+   - Choose **Todos** (all) to get all variables including yield, area planted, area harvested, and production
+   - Other options: **Rendimiento** = Yield (kg per hectare), *Producción* (Production), *Superficie sembrada* (Area planted), *Superficie cosechada* (Area harvested), etc.
 
 4. **Set Years**
    - **Desde** = From year  
@@ -100,13 +102,16 @@ Processed files are saved as: `{crop_name}_yield_{min_year}-{max_year}.csv`
 - `admin_level_2` - Department name  
 - `year` - Harvest year (extracted from season)
 - `{crop_name}_yield` - Yield in kg/hectare
+- `area_planted` - Area planted in hectares
+- `area_harvested` - Area harvested in hectares
+- `production` - Production in metric tons
 
 **Example output files:**
-- `crop_wheat_yield_1970-2025.csv`
-- `crop_corn_yield_1970-2025.csv`
-- `crop_soybean_yield_1975-2025.csv`
-- `crop_sunflower_yield_1970-2025.csv`
-- `crop_barley_yield_2017-2024.csv`
+- `crop_wheat_yield.csv`
+- `crop_corn_yield.csv`
+- `crop_soybean1_yield.csv`
+- `crop_sunflower_yield.csv`
+- `crop_barley_yield.csv`
 
 ### Data Quality Filtering
 

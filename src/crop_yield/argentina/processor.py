@@ -12,12 +12,17 @@ import argparse
 
 from src.crop_yield.argentina.models import (
     CROP_NAME_MAPPING,
-    DATA_QUALITY_THRESHOLD,
-    EVALUATION_YEARS,
     RAW_DATA_COLUMNS,
     COUNTRY_NAME,
 )
 from src.crop_yield.argentina.name_mapping import ArgentinaNameMapper
+from src.crop_yield.base import filter_administrative_units_by_quality
+from src.crop_yield.base.constants import (
+    AREA_PLANTED_COLUMN,
+    AREA_HARVESTED_COLUMN,
+    PRODUCTION_COLUMN,
+    YIELD_COLUMN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -63,15 +68,24 @@ def load_crop_data(crop_file: Path) -> pd.DataFrame:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.replace('"', "")
 
-    if "yield" in df.columns:
-        df["yield"] = pd.to_numeric(df["yield"], errors="coerce")
-    else:
+    # Convert numeric columns
+    numeric_columns = [
+        YIELD_COLUMN,
+        AREA_PLANTED_COLUMN,
+        AREA_HARVESTED_COLUMN,
+        PRODUCTION_COLUMN,
+    ]
+    for col in numeric_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    if YIELD_COLUMN not in df.columns:
         raise ValueError("Yield column not found in the data")
 
     # Drop rows where yield is missing or zero
     initial_count = len(df)
-    df = df.dropna(subset=["yield"])  # Remove missing
-    df = df[df["yield"] > 0]  # Remove zero yields
+    df = df.dropna(subset=[YIELD_COLUMN])  # Remove missing
+    df = df[df[YIELD_COLUMN] > 0]  # Remove zero yields
     final_count = len(df)
 
     if initial_count > final_count:
@@ -80,46 +94,6 @@ def load_crop_data(crop_file: Path) -> pd.DataFrame:
         )
 
     return pd.DataFrame(df)
-
-
-def filter_departments_by_quality(df: pd.DataFrame) -> pd.DataFrame:
-    """Filter departments with insufficient data quality."""
-    max_year = df["year"].max()
-    recent_years = range(max_year - EVALUATION_YEARS + 1, max_year + 1)
-    recent_data = df[df["year"].isin(recent_years)]
-
-    if len(recent_data) == 0:
-        raise ValueError(f"No data in evaluation period")
-
-    # Calculate completeness by department
-    dept_stats = []
-    grouped = recent_data.groupby(["province", "department"])
-    for group_key, group_data in grouped:
-        prov, dept = group_key[0], group_key[1]  # type: ignore
-        completeness = group_data["yield"].notna().sum() / len(recent_years)  # type: ignore
-        if completeness >= DATA_QUALITY_THRESHOLD:
-            dept_stats.append({"province": prov, "department": dept})
-
-    if not dept_stats:
-        raise ValueError(
-            f"No departments meet {DATA_QUALITY_THRESHOLD:.0%} quality threshold"
-        )
-
-    # Keep only good departments
-    good_depts = pd.DataFrame(dept_stats)
-    filtered_df = df.merge(good_depts, on=["province", "department"], how="inner")
-
-    total_depts = len(recent_data.groupby(["province", "department"]))
-    kept_depts = len(good_depts)
-    drop_pct = (
-        ((total_depts - kept_depts) / total_depts * 100) if total_depts > 0 else 0
-    )
-
-    logger.info(
-        f"Departments: kept {kept_depts}/{total_depts} ({drop_pct:.1f}% dropped)"
-    )
-
-    return filtered_df
 
 
 def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
@@ -147,12 +121,21 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
         raw: std for std, raw in RAW_DATA_COLUMNS.items() if raw in raw_df.columns
     }
     raw_df = raw_df.rename(columns=column_mapping)
-    if "yield" in raw_df.columns:
-        raw_df["yield"] = pd.to_numeric(raw_df["yield"], errors="coerce")
+
+    # Convert numeric columns for statistics
+    numeric_columns = [
+        YIELD_COLUMN,
+        AREA_PLANTED_COLUMN,
+        AREA_HARVESTED_COLUMN,
+        PRODUCTION_COLUMN,
+    ]
+    for col in numeric_columns:
+        if col in raw_df.columns:
+            raw_df[col] = pd.to_numeric(raw_df[col], errors="coerce")
 
     total_records_original = len(raw_df)
-    missing_yield_original = raw_df["yield"].isna().sum()
-    zero_yield_original = (raw_df["yield"] == 0).sum()
+    missing_yield_original = raw_df[YIELD_COLUMN].isna().sum()
+    zero_yield_original = (raw_df[YIELD_COLUMN] == 0).sum()
     bad_yield_original = missing_yield_original + zero_yield_original
     missing_pct_original = (
         (bad_yield_original / total_records_original * 100)
@@ -161,7 +144,9 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
     )
 
     # Filter by quality
-    df_filtered = filter_departments_by_quality(df)
+    df_filtered = filter_administrative_units_by_quality(
+        df, YIELD_COLUMN, "province", "department"
+    )
 
     # Map administrative names to GADM standard
     df_filtered["admin_level_1"] = df_filtered["province"].apply(
@@ -171,16 +156,29 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
         lambda x: name_mapper.map_admin_name(x, 2)
     )
 
+    # Sort by admin_level_1, admin_level_2, year
+    df_filtered = df_filtered.sort_values(
+        ["admin_level_1", "admin_level_2", "year"]
+    ).reset_index(drop=True)
+
     # Create output
-    output_df = pd.DataFrame(
-        {
-            "country": COUNTRY_NAME,
-            "admin_level_1": df_filtered["admin_level_1"],
-            "admin_level_2": df_filtered["admin_level_2"],
-            "year": df_filtered["year"],
-            f"{crop_english}_yield": df_filtered["yield"],
-        }
-    )
+    output_data = {
+        "country": COUNTRY_NAME,
+        "admin_level_1": df_filtered["admin_level_1"],
+        "admin_level_2": df_filtered["admin_level_2"],
+        "year": df_filtered["year"],
+        f"{crop_english}_yield": df_filtered[YIELD_COLUMN],
+    }
+
+    # Add new columns if they exist in the data
+    if AREA_PLANTED_COLUMN in df_filtered.columns:
+        output_data[AREA_PLANTED_COLUMN] = df_filtered[AREA_PLANTED_COLUMN]
+    if AREA_HARVESTED_COLUMN in df_filtered.columns:
+        output_data[AREA_HARVESTED_COLUMN] = df_filtered[AREA_HARVESTED_COLUMN]
+    if PRODUCTION_COLUMN in df_filtered.columns:
+        output_data[PRODUCTION_COLUMN] = df_filtered[PRODUCTION_COLUMN]
+
+    output_df = pd.DataFrame(output_data)
 
     # Sort and save
     output_df = output_df.sort_values(["admin_level_1", "admin_level_2", "year"])
@@ -260,7 +258,7 @@ def main():
     logging.basicConfig(level=log_level, format="%(levelname)s: %(message)s")
 
     data_dir = Path("data/argentina/raw/crop_yield")
-    output_dir = Path("data/argentina/final")
+    output_dir = Path("data/argentina/final/crop")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     output_files = process_all_crops(data_dir, output_dir, args.crop)

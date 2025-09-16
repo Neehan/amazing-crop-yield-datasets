@@ -6,6 +6,12 @@ as well as data quality thresholds for filtering departments with insufficient d
 """
 
 from typing import Dict, Set
+from src.crop_yield.base.constants import (
+    AREA_PLANTED_COLUMN,
+    AREA_HARVESTED_COLUMN,
+    PRODUCTION_COLUMN,
+    YIELD_COLUMN,
+)
 
 # Mapping from Spanish crop names (as they appear in the data) to standardized English names
 CROP_NAME_MAPPING: Dict[str, str] = {
@@ -13,14 +19,13 @@ CROP_NAME_MAPPING: Dict[str, str] = {
     "Soja total": "soybean",
     "Maíz": "corn",
     "Girasol": "sunflower",
+    "Soja 1ra": "soybean1",
+    "Soja 2da": "soybean2",
 }
 
 # Set of all supported crops for validation
 SUPPORTED_CROPS: Set[str] = set(CROP_NAME_MAPPING.keys())
 
-# Data quality thresholds
-DATA_QUALITY_THRESHOLD = 0.25  # 25% of data must be present (75% missing allowed)
-EVALUATION_YEARS = 20  # Evaluate data quality over the last 20 years
 
 # Column names in the raw data
 RAW_DATA_COLUMNS = {
@@ -30,7 +35,10 @@ RAW_DATA_COLUMNS = {
     "department": "Departamento",
     "province_id": "idProvincia",
     "department_id": "idDepartamento",
-    "yield": "Rendimiento",
+    YIELD_COLUMN: "Rendimiento",
+    AREA_PLANTED_COLUMN: "Sup. Sembrada",
+    AREA_HARVESTED_COLUMN: "Sup. Cosechada",
+    PRODUCTION_COLUMN: "Producción",
 }
 
 # Output CSV column names

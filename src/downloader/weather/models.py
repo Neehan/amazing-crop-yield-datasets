@@ -20,6 +20,8 @@ class WeatherVariable(Enum):
     VAPOR_PRESSURE = ("vapour_pressure", "24_hour_mean")
     REFERENCE_ET = ("reference_evapotranspiration", None)
     WIND_SPEED = ("10m_wind_speed", "24_hour_mean")
+    CLOUD_COVER = ("cloud_cover", "24_hour_mean")
+    VAPOR_PRESSURE_DEFICIT = ("vapour_pressure_deficit_at_maximum_temperature", None)
 
     # All other AgERA5 variables (uncomment as needed)
     # TEMP_MEAN = ("2m_temperature", "24_hour_mean")
