@@ -144,7 +144,12 @@ def map_weather_variables(df: pd.DataFrame) -> pd.DataFrame:
                     # Convert vapor pressure from hPa to kPa
                     data = data / 10.0
                     logger.debug(f"Converted {old_col} from hPa to kPa")
-
+                elif weather_var == "snow_lwe":
+                    # Convert snow depth from mm of water equivalent to cm of snow
+                    data = data * 10.0
+                    logger.debug(
+                        f"Converted {old_col} from mm of water equivalent to cm of snow"
+                    )
                 weather_data[new_col] = data
             else:
                 logger.warning(f"Column {old_col} not found in data")
