@@ -253,6 +253,9 @@ python -m cli.process_cci_cropland_mask --country USA --start-year 2020 --end-ye
 
 # Process to state-level instead of county-level
 python -m cli.process_cci_cropland_mask --country USA --admin-level 1 --start-year 2020 --end-year 2022
+
+# Process CCI cropland mask for extended range (automatically runs ML imputation for missing years)
+python -m cli.process_cci_cropland_mask --country USA --start-year 1979 --end-year 2025
 ```
 
 **Available options:**
@@ -262,6 +265,20 @@ python -m cli.process_cci_cropland_mask --country USA --admin-level 1 --start-ye
 - `--admin-level`: Administrative level (1=state/province, 2=county/department, default: 2)
 - `--output-format`: Output format (csv or parquet, default: csv)
 - `--debug`: Enable debug logging
+
+#### Automatic ML Imputation for Extended Time Series
+
+The CCI cropland mask is only available from 1992-2022, but many applications require data from 1979 onwards. When you request years outside this range, the processor automatically:
+
+1. **Processes available years (1992-2022)** from downloaded CCI data
+2. **Runs ML imputation** for missing years (1979-1991 and 2023+)
+
+The ML imputation uses a simple linear regression model:
+- **Training data**: 1992-2010 CCI cropland mask + HYDE cropland data
+- **Validation data**: 2011-2022 CCI cropland mask + HYDE cropland data  
+- **Prediction**: Missing years using HYDE cropland data as features
+
+The model uses HYDE cropland fraction, HYDE irrigated fraction, latitude, and longitude as features to predict CCI cropland and irrigated masks. Both MSE and R² are reported for training and validation sets to assess model performance.
 
 ## Project Structure
 

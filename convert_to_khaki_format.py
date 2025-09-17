@@ -57,9 +57,14 @@ def load_yield_data(data_dir: str, country: str, crops: List[str]) -> pd.DataFra
     yield_dfs = []
 
     for crop in crops:
-        yield_file = Path(data_dir) / country / "final" / f"crop_{crop}_yield.csv"
+        yield_file = (
+            Path(data_dir) / country / "final" / "crop" / f"crop_{crop}_yield.csv"
+        )
         if yield_file.exists():
             yield_df = pd.read_csv(yield_file)
+            yield_df.drop(
+                columns=["area_planted", "area_harvested", "production"], inplace=True
+            )
             yield_dfs.append(yield_df)
             logger.info(f"Loaded yield data for {crop}: {yield_df.shape}")
 
@@ -136,9 +141,9 @@ def map_weather_variables(df: pd.DataFrame) -> pd.DataFrame:
                     data = data / 1_000_000
                     logger.debug(f"Converted {old_col} from J/m²/day to MJ/m²/day")
                 elif weather_var == "vapor_pressure":
-                    # Convert vapor pressure from hPa to Pa
-                    data = data * 100
-                    logger.debug(f"Converted {old_col} from hPa to Pa")
+                    # Convert vapor pressure from hPa to kPa
+                    data = data / 10.0
+                    logger.debug(f"Converted {old_col} from hPa to kPa")
 
                 weather_data[new_col] = data
             else:
