@@ -226,6 +226,43 @@ python -m cli.process_soil --country Brazil --properties clay sand silt --depths
 - `--output-format`: Output format (csv or parquet, default: csv)
 - `--debug`: Enable debug logging
 
+### 6. Download CCI Cropland Mask Data
+
+```bash
+# Download CCI cropland mask data for a country
+python -m cli.download_cci_cropland_mask --country USA --start-year 2020 --end-year 2022
+
+# Download for other countries
+python -m cli.download_cci_cropland_mask --country argentina --start-year 2020 --end-year 2022
+```
+
+**Available options:**
+- `--country`: Country name (e.g., 'USA', 'Brazil', 'Argentina')
+- `--start-year`: Start year inclusive (default: 2020)
+- `--end-year`: End year exclusive (default: current year)
+- `--variables`: Specific variables to download (default: all)
+- `--concurrent`: Number of concurrent downloads (default: 8)
+- `--list-variables`: List available CCI cropland mask variables
+- `--debug`: Enable debug logging
+
+### 7. Process CCI Cropland Mask Data
+
+```bash
+# Process CCI cropland mask data to create cropland and irrigated masks
+python -m cli.process_cci_cropland_mask --country USA --start-year 2020 --end-year 2022
+
+# Process to state-level instead of county-level
+python -m cli.process_cci_cropland_mask --country USA --admin-level 1 --start-year 2020 --end-year 2022
+```
+
+**Available options:**
+- `--country`: Country to process (required)
+- `--start-year`: Start year (default: 2020)
+- `--end-year`: End year (default: 2022)
+- `--admin-level`: Administrative level (1=state/province, 2=county/department, default: 2)
+- `--output-format`: Output format (csv or parquet, default: csv)
+- `--debug`: Enable debug logging
+
 ## Project Structure
 
 ```
@@ -236,14 +273,39 @@ amazing-crop-yield-datasets/
 │   ├── download_weather.py    # Weather data download script
 │   ├── download_land_surface.py # Land surface data download script
 │   ├── download_soil.py       # Soil data download script
+│   ├── download_cci_cropland_mask.py # CCI cropland mask download script
 │   ├── process_weather.py     # Weather data processing script
 │   ├── process_land_surface.py # Land surface data processing script
-│   └── process_soil.py        # Soil data processing script
+│   ├── process_soil.py        # Soil data processing script
+│   └── process_cci_cropland_mask.py # CCI cropland mask processing script
 ├── src/                       # Source code modules
 │   ├── downloader/           # Data download modules
 │   ├── processing/           # Data processing utilities
 │   └── utils/               # Utility functions
 ├── data/                     # Data storage (created during processing)
+│   ├── {country}/            # Country-specific data
+│   │   ├── raw/              # Raw downloaded data
+│   │   │   ├── weather/      # AgERA5 weather data (ZIP files)
+│   │   │   ├── land_surface/ # ERA5 land surface data (TIF files)
+│   │   │   ├── soil/         # SoilGrids soil data (TIF files)
+│   │   │   ├── cci_cropland_mask/ # CCI cropland mask data (ZIP files)
+│   │   │   ├── gadm/         # GADM administrative boundaries
+│   │   │   ├── crop_yield/   # Raw crop yield data (CSV files)
+│   │   │   ├── planted_area/ # Raw planted area data
+│   │   │   └── faostat/      # Raw FAOSTAT data
+│   │   ├── intermediate/     # Processed intermediate files
+│   │   │   ├── admin_mask/   # Administrative boundary masks
+│   │   │   ├── cci_cropland_mask/ # CCI cropland masks
+│   │   │   ├── weather/      # Processed weather data
+│   │   │   ├── land_surface/ # Processed land surface data
+│   │   │   ├── soil/         # Processed soil data
+│   │   │   └── aggregated/   # Aggregated CSV files
+│   │   └── final/            # Final processed datasets
+│   │       ├── features/     # ML-ready feature datasets
+│   │       └── crop_*.csv    # Processed crop yield data
+│   └── global/               # Global datasets
+│       ├── hyde-3.5/         # HYDE cropland data
+│       └── mirca2000-v1.1/   # MIRCA2000 crop calendar data
 └── requirements.txt          # Python dependencies
 ```
 
