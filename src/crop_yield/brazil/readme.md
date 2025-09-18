@@ -41,7 +41,9 @@ Processed files: `crop_{crop_name}_yield.csv`
 - `admin_level_2` - Municipality name (GADM compatible)
 - `year` - Year
 - `{crop_name}_yield` - Yield in kg/ha
-
+- `area_planted` - Area planted in hectares 
+- `area_harvested` - Area harvested in hectares 
+- `production` - Production quantity in tonnes 
 **Features:**
 - Filters zero and missing yields
 - Maps 2-letter state codes to full names

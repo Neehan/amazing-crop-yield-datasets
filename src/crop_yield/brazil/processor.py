@@ -13,6 +13,12 @@ import geopandas as gpd
 from src.crop_yield.brazil.models import CROP_NAME_MAPPING
 from src.crop_yield.brazil.name_mapping import BrazilNameMapper
 from src.crop_yield.base import filter_administrative_units_by_quality
+from src.crop_yield.base.constants import (
+    AREA_PLANTED_COLUMN,
+    AREA_HARVESTED_COLUMN,
+    PRODUCTION_COLUMN,
+    YIELD_COLUMN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,14 +47,20 @@ def load_crop_data(crop_file: Path) -> pd.DataFrame:
         "variable",
         "crop_code",
         "crop",
-        "yield_kg_ha",
+        "value",
     ]
 
-    # Filter for yield data only
-    df = df[df["variable"] == "Rendimento médio da produção"]
+    # Keep all relevant variables
+    relevant_variables = [
+        "Rendimento médio da produção",
+        "Área plantada",
+        "Área colhida",
+        "Quantidade produzida",
+    ]
+    df = df[df["variable"].isin(relevant_variables)]  # type: ignore
 
-    # Convert yield to numeric, handling missing values
-    df["yield_kg_ha"] = pd.to_numeric(df["yield_kg_ha"], errors="coerce")
+    # Convert value to numeric, handling missing values
+    df["value"] = pd.to_numeric(df["value"], errors="coerce")
 
     # Convert year to integer
     df["year"] = pd.to_numeric(df["year"], errors="coerce")
@@ -97,18 +109,42 @@ def load_all_crop_data(
     df = pd.concat(all_data, ignore_index=True)
     logger.info(f"Combined {len(df)} total records for {crop}")
 
+    # Pivot data to have variables as columns
+    df_pivot = df.pivot_table(
+        index=["municipality_code", "municipality", "year", "crop_english"],
+        columns="variable",
+        values="value",
+        aggfunc="first",
+    ).reset_index()
+
+    # Flatten column names
+    df_pivot.columns.name = None
+
+    # Rename columns to standard names
+    column_mapping = {
+        "Rendimento médio da produção": YIELD_COLUMN,
+        "Área plantada": AREA_PLANTED_COLUMN,
+        "Área colhida": AREA_HARVESTED_COLUMN,
+        "Quantidade produzida": PRODUCTION_COLUMN,
+    }
+    df_pivot = df_pivot.rename(columns=column_mapping)
+
+    # Ensure yield column exists (required for filtering)
+    if YIELD_COLUMN not in df_pivot.columns:
+        raise ValueError(f"No yield data found for {crop}")
+
     # Remove rows with missing or zero yield data
-    initial_count = len(df)
-    df = df.dropna(subset=["yield_kg_ha"])  # type: ignore
-    df = df[df["yield_kg_ha"] > 0]  # Remove zero yields
-    final_count = len(df)
+    initial_count = len(df_pivot)
+    df_pivot = df_pivot.dropna(subset=[YIELD_COLUMN])
+    df_pivot = df_pivot[df_pivot[YIELD_COLUMN] > 0]  # Remove zero yields
+    final_count = len(df_pivot)
 
     if initial_count > final_count:
         logger.info(
             f"Dropped {initial_count - final_count} ({((initial_count - final_count) / initial_count * 100):.1f}%) rows with missing or zero yield"
         )
 
-    return pd.DataFrame(df)
+    return pd.DataFrame(df_pivot)
 
 
 def process_crop_yield_data(
@@ -167,15 +203,23 @@ def process_crop_yield_data(
     )
 
     # Create standardized output
-    output_df = pd.DataFrame(
-        {
-            "country": "Brazil",
-            "admin_level_1": df["admin_level_1"],
-            "admin_level_2": df["admin_level_2"],
-            "year": df["year"],
-            f"{crop}_yield": df["yield_kg_ha"],
-        }
-    )
+    output_data = {
+        "country": "Brazil",
+        "admin_level_1": df["admin_level_1"],
+        "admin_level_2": df["admin_level_2"],
+        "year": df["year"],
+        f"{crop}_yield": df[YIELD_COLUMN],
+    }
+
+    # Add new columns if they exist in the data
+    if AREA_PLANTED_COLUMN in df.columns:
+        output_data[AREA_PLANTED_COLUMN] = df[AREA_PLANTED_COLUMN]
+    if AREA_HARVESTED_COLUMN in df.columns:
+        output_data[AREA_HARVESTED_COLUMN] = df[AREA_HARVESTED_COLUMN]
+    if PRODUCTION_COLUMN in df.columns:
+        output_data[PRODUCTION_COLUMN] = df[PRODUCTION_COLUMN]
+
+    output_df = pd.DataFrame(output_data)
 
     # Remove rows with missing admin_level_1 (state)
     output_df = output_df.dropna(subset=["admin_level_1"])

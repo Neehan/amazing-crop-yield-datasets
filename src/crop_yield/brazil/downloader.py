@@ -41,7 +41,14 @@ def download_single_year(
             territorial_level="6",  # N6 = municipality
             ibge_territorial_code="all",  # all municipalities
             period=str(year),
-            variable="112",  # rendimento médio (kg/ha)
+            variable=",".join(
+                [
+                    "112",  # rendimento médio (kg/ha)
+                    "109",  # Área plantada
+                    "216",  # Área colhida
+                    "214",  # Quantidade produzida
+                ]
+            ),
             classification="81",  # C81 = produto lavouras temporárias
             categories=crop_code,  # specific crop code
         )

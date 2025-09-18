@@ -23,8 +23,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_and_concatenate_features(data_dir: str, country: str) -> pd.DataFrame:
-    """Load and concatenate all feature chunks for a country."""
+def load_and_concatenate_features(data_dir: str, country: str, filter_combinations: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """Load and concatenate all feature chunks for a country, with optional filtering."""
     features_dir = Path(data_dir) / country / "final" / "features"
 
     if not features_dir.exists():
@@ -38,11 +38,23 @@ def load_and_concatenate_features(data_dir: str, country: str) -> pd.DataFrame:
 
     logger.info(f"Found {len(feature_files)} feature chunk files")
 
-    # Load and concatenate all chunks
+    # Load and concatenate all chunks with early filtering
     feature_dfs = []
     for file_path in feature_files:
         logger.info(f"Loading {file_path.name}...")
         df = pd.read_csv(file_path)
+
+        # Apply early filtering if provided
+        if filter_combinations is not None:
+            original_size = len(df)
+            df = df.merge(
+                filter_combinations,
+                on=['admin_level_1', 'admin_level_2', 'year'],
+                how='inner'
+            )
+            filtered_size = len(df)
+            logger.info(f"Filtered {file_path.name}: {original_size:,} -> {filtered_size:,} rows ({filtered_size/original_size*100:.1f}%)")
+
         feature_dfs.append(df)
 
     # Concatenate all feature data
@@ -253,7 +265,7 @@ def convert_to_khaki_format(
     Args:
         data_dir: Path to data directory
         country: Country name (e.g., 'argentina')
-        crop: Crop type (e.g., 'soybean')
+        crops: List of crop types (e.g., ['soybean', 'corn'])
         output_file: Output file path (optional)
 
     Returns:
@@ -261,11 +273,15 @@ def convert_to_khaki_format(
     """
     logger.info(f"Converting {country} {crops} data to Khaki format...")
 
-    # Load and concatenate features
-    features_df = load_and_concatenate_features(data_dir, country)
-
-    # Load yield data
+    # Load yield data first to get admin/year combinations
     yield_df = load_yield_data(data_dir, country, crops)
+
+    # Extract unique admin/year combinations from yield data for filtering
+    filter_combinations = yield_df[['admin_level_1', 'admin_level_2', 'year']].drop_duplicates()
+    logger.info(f"Found {len(filter_combinations):,} unique admin/year combinations in yield data")
+
+    # Load and concatenate features with early filtering
+    features_df = load_and_concatenate_features(data_dir, country, filter_combinations)
 
     # Merge features with yield data (left join to preserve rows without yield as NaN)
     logger.info("Merging features with yield data...")
