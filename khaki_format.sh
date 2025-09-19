@@ -18,13 +18,19 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --crops)
-            CROPS="$2"
-            shift 2
+            shift
+            # Collect all remaining arguments as crops
+            CROPS=""
+            while [[ $# -gt 0 && ! "$1" =~ ^-- ]]; do
+                CROPS="$CROPS $1"
+                shift
+            done
+            CROPS=$(echo "$CROPS" | xargs)  # Trim whitespace
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: sbatch khaki_format.sh --country COUNTRY --crops 'CROP1 CROP2 ...'"
-            echo "Example: sbatch khaki_format.sh --country argentina --crops 'soybean corn wheat'"
+            echo "Usage: sbatch khaki_format.sh --country COUNTRY --crops CROP1 CROP2 ..."
+            echo "Example: sbatch khaki_format.sh --country brazil --crops cotton wheat soybean"
             exit 1
             ;;
     esac
@@ -33,15 +39,15 @@ done
 # Check if required arguments are provided
 if [ -z "$COUNTRY" ]; then
     echo "Error: --country is required"
-    echo "Usage: sbatch khaki_format.sh --country COUNTRY --crops 'CROP1 CROP2 ...'"
-    echo "Example: sbatch khaki_format.sh --country argentina --crops 'soybean corn wheat'"
+    echo "Usage: sbatch khaki_format.sh --country COUNTRY --crops CROP1 CROP2 ..."
+    echo "Example: sbatch khaki_format.sh --country brazil --crops cotton wheat soybean"
     exit 1
 fi
 
 if [ -z "$CROPS" ]; then
     echo "Error: --crops is required"
-    echo "Usage: sbatch khaki_format.sh --country COUNTRY --crops 'CROP1 CROP2 ...'"
-    echo "Example: sbatch khaki_format.sh --country argentina --crops 'soybean corn wheat'"
+    echo "Usage: sbatch khaki_format.sh --country COUNTRY --crops CROP1 CROP2 ..."
+    echo "Example: sbatch khaki_format.sh --country brazil --crops cotton wheat soybean"
     exit 1
 fi
 
