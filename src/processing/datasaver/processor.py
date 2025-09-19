@@ -10,7 +10,9 @@ from tqdm import tqdm
 from src.processing.datasaver.config import DataSaverConfig
 from src.processing.base.processor import BaseProcessor
 from src.constants import DEFAULT_CHUNK_SIZE, WEATHER_END_YEAR_MAX
-from src.downloader.soil.models import SoilDepth
+from src.downloader.soil.models import SoilDepth, SoilProperty
+from src.downloader.weather.models import WeatherVariable
+from src.downloader.land_surface.models import LandSurfaceVariable
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,9 @@ class DataSaverProcessor(BaseProcessor):
         # Setup paths
         aggregated_dir = self.config.get_aggregated_directory()
         aggregated_dir.mkdir(parents=True, exist_ok=True)
+
+        # Validate all required files are present before processing
+        self._validate_required_files(aggregated_dir)
 
         # Get all locations that exist in ALL datasets
         logger.info("Discovering all locations...")
@@ -517,3 +522,44 @@ class DataSaverProcessor(BaseProcessor):
             return int(col.split("_")[1]) if col.startswith("week_") else 999
 
         return sorted(week_cols, key=get_week_key)
+
+    def _validate_required_files(self, aggregated_dir: Path) -> None:
+        """Validate that all required data files are present before processing"""
+        logger.info("Validating required data files...")
+
+        missing_files = []
+
+        # Define expected files based on models
+        expected_weather_vars = [var.key for var in WeatherVariable]
+        expected_land_surface_vars = [var.key for var in LandSurfaceVariable]
+        expected_soil_properties = [prop.key for prop in SoilProperty]
+
+        # Check weather files
+        for var in expected_weather_vars:
+            expected_file = aggregated_dir / f"weather_{var}_weekly_weighted_admin{self.config.admin_level}.csv"
+            if not expected_file.exists():
+                missing_files.append(f"Weather: {expected_file.name}")
+
+        # Check land surface files
+        for var in expected_land_surface_vars:
+            expected_file = aggregated_dir / f"land_surface_{var}_weekly_weighted_admin{self.config.admin_level}.csv"
+            if not expected_file.exists():
+                missing_files.append(f"Land Surface: {expected_file.name}")
+
+        # Check soil files
+        for prop in expected_soil_properties:
+            expected_file = aggregated_dir / f"soil_{prop}_weighted_admin{self.config.admin_level}.csv"
+            if not expected_file.exists():
+                missing_files.append(f"Soil: {expected_file.name}")
+
+        # Report results
+        if missing_files:
+            logger.error("=== MISSING REQUIRED FILES ===")
+            for missing in missing_files:
+                logger.error(f"  ❌ {missing}")
+            logger.error("=== DATA VALIDATION FAILED ===")
+            raise FileNotFoundError(f"Missing {len(missing_files)} required data files. Processing cannot continue.")
+        else:
+            logger.info("✅ All required data files are present")
+            logger.info(f"Expected: {len(expected_weather_vars)} weather + {len(expected_land_surface_vars)} land surface + {len(expected_soil_properties)} soil files")
+            logger.info("Validation passed - proceeding with data merging")
