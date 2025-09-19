@@ -374,8 +374,7 @@ def convert_to_khaki_format(
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    crops_str = "_".join(crops)
-    output_file = output_dir_path / f"khaki_{country}_{crops_str}.csv"
+    output_file = output_dir_path / f"khaki_{country}_multi_crop.csv"
 
     # Save to CSV
     logger.info(f"Saving Khaki format data to {output_file}")
