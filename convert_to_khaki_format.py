@@ -23,7 +23,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_and_concatenate_features(data_dir: str, country: str, filter_combinations: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+def load_and_concatenate_features(
+    data_dir: str, country: str, filter_combinations: Optional[pd.DataFrame] = None
+) -> pd.DataFrame:
     """Load and concatenate all feature chunks for a country, with optional filtering."""
     features_dir = Path(data_dir) / country / "final" / "features"
 
@@ -49,11 +51,13 @@ def load_and_concatenate_features(data_dir: str, country: str, filter_combinatio
             original_size = len(df)
             df = df.merge(
                 filter_combinations,
-                on=['admin_level_1', 'admin_level_2', 'year'],
-                how='inner'
+                on=["admin_level_1", "admin_level_2", "year"],
+                how="inner",
             )
             filtered_size = len(df)
-            logger.info(f"Filtered {file_path.name}: {original_size:,} -> {filtered_size:,} rows ({filtered_size/original_size*100:.1f}%)")
+            logger.info(
+                f"Filtered {file_path.name}: {original_size:,} -> {filtered_size:,} rows ({filtered_size/original_size*100:.1f}%)"
+            )
 
         feature_dfs.append(df)
 
@@ -257,7 +261,7 @@ def rename_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def convert_to_khaki_format(
-    data_dir: str, country: str, crops: List[str], output_file: Optional[str] = None
+    data_dir: str, country: str, crops: List[str], output_dir: str = "data/khaki"
 ) -> str:
     """
     Convert processed data to Khaki format.
@@ -266,7 +270,7 @@ def convert_to_khaki_format(
         data_dir: Path to data directory
         country: Country name (e.g., 'argentina')
         crops: List of crop types (e.g., ['soybean', 'corn'])
-        output_file: Output file path (optional)
+        output_dir: Output directory (defaults to 'data/khaki')
 
     Returns:
         Path to the output file
@@ -277,8 +281,12 @@ def convert_to_khaki_format(
     yield_df = load_yield_data(data_dir, country, crops)
 
     # Extract unique admin/year combinations from yield data for filtering
-    filter_combinations = yield_df[['admin_level_1', 'admin_level_2', 'year']].drop_duplicates()
-    logger.info(f"Found {len(filter_combinations):,} unique admin/year combinations in yield data")
+    filter_combinations = pd.DataFrame(
+        yield_df[["admin_level_1", "admin_level_2", "year"]].drop_duplicates()
+    )
+    logger.info(
+        f"Found {len(filter_combinations):,} unique admin/year combinations in yield data"
+    )
 
     # Load and concatenate features with early filtering
     features_df = load_and_concatenate_features(data_dir, country, filter_combinations)
@@ -363,8 +371,11 @@ def convert_to_khaki_format(
     khaki_df = khaki_df.sort_values(["loc_ID", "year"]).reset_index(drop=True)  # type: ignore
 
     # Set output file path
-    if output_file is None:
-        output_file = f"khaki_{country}_multi_crop.csv"
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    crops_str = "_".join(crops)
+    output_file = output_dir_path / f"khaki_{country}_{crops_str}.csv"
 
     # Save to CSV
     logger.info(f"Saving Khaki format data to {output_file}")
@@ -374,7 +385,7 @@ def convert_to_khaki_format(
     logger.info(f"Final shape: {khaki_df.shape}")
     logger.info(f"Columns: {list(khaki_df.columns)}")
 
-    return output_file
+    return str(output_file)
 
 
 def main():
@@ -395,7 +406,10 @@ def main():
         help="Crop types (e.g., soybean corn wheat sunflower)",
     )
     parser.add_argument(
-        "--output", type=str, default=None, help="Output file path (optional)"
+        "--output-dir",
+        type=str,
+        default="data/khaki",
+        help="Output directory (default: data/khaki)",
     )
     parser.add_argument(
         "--log-level",
@@ -415,7 +429,7 @@ def main():
             data_dir=args.data_dir,
             country=args.country,
             crops=args.crops,
-            output_file=args.output,
+            output_dir=args.output_dir,
         )
         logger.info(f"Successfully created Khaki format file: {output_file}")
 
