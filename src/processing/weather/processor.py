@@ -88,13 +88,18 @@ class WeatherProcessor(BaseProcessor):
             # Add variable column for formatting
             aggregated_df["variable"] = variable
 
-            # Convert to pivot format
+            # Create output file path for formatter caching
+            filename = f"weather_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
+            aggregated_dir = intermediate_dir / "aggregated"
+            aggregated_dir.mkdir(parents=True, exist_ok=True)
+            output_file_path = aggregated_dir / filename
+
+            # Convert to pivot format (with caching)
             pivoted_df = self.formatter.pivot_to_final_format(
-                aggregated_df, self.config.admin_level
+                aggregated_df, self.config.admin_level, output_file_path
             )
 
             # Save output file
-            filename = f"weather_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
                 pivoted_df, filename, self.config.output_format, intermediate_dir
             )

@@ -87,12 +87,17 @@ class LandSurfaceProcessor(BaseProcessor):
             # Step 4: Format and save output
             aggregated_df["variable"] = variable
 
+            # Create output file path for formatter caching
+            filename = f"land_surface_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
+            aggregated_dir = intermediate_dir / "aggregated"
+            aggregated_dir.mkdir(parents=True, exist_ok=True)
+            output_file_path = aggregated_dir / filename
+
             pivoted_df = self.formatter.pivot_to_final_format(
-                aggregated_df, self.config.admin_level
+                aggregated_df, self.config.admin_level, output_file_path
             )
 
             # Save output file
-            filename = f"land_surface_{variable}_weekly_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
                 pivoted_df, filename, self.config.output_format, intermediate_dir
             )

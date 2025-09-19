@@ -12,6 +12,9 @@ from tqdm import tqdm
 
 from src.processing.base.processor import BaseProcessor
 from src.processing.management.cci_cropland_mask.config import CCICroplandMaskConfig
+from src.processing.management.cci_cropland_mask.ml_imputation_processor import (
+    MLImputationProcessor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,26 +46,39 @@ class CCICroplandMaskProcessor(BaseProcessor):
 
         output_files = []
 
-        # Process each year (end_year is exclusive)
-        for year in tqdm(
-            range(self.config.start_year, self.config.end_year),
-            desc="Processing CCI cropland mask",
-        ):
-            logger.debug(f"Processing CCI cropland mask for year {year}")
+        # Process available years (1992-2022) from zip files
+        available_years = []
+        missing_years = []
 
-            # Find the zip file for this year
+        for year in range(self.config.start_year, self.config.end_year):
             zip_file = cci_cropland_mask_dir / f"{year}_cropland_mask.zip"
-            if not zip_file.exists():
-                logger.warning(
-                    f"No CCI cropland mask data found for year {year}: {zip_file}"
-                )
-                continue
+            if zip_file.exists():
+                available_years.append(year)
+            else:
+                missing_years.append(year)
 
-            # Extract and process the zip file
+        # Process available years
+        for year in tqdm(available_years, desc="Processing CCI cropland mask"):
+            logger.debug(f"Processing CCI cropland mask for year {year}")
+            zip_file = cci_cropland_mask_dir / f"{year}_cropland_mask.zip"
             year_output_files = self._process_year(
                 zip_file, year, cci_cropland_mask_processed_dir
             )
             output_files.extend(year_output_files)
+
+        # Run ML imputation for missing years
+        if missing_years:
+            logger.info(
+                f"Running ML imputation for {len(missing_years)} missing years: {missing_years}"
+            )
+            try:
+                ml_processor = MLImputationProcessor(self.config)
+                ml_output_files = ml_processor.process(missing_years)
+                output_files.extend(ml_output_files)
+                logger.info(f"ML imputation completed. Added {len(ml_output_files)} files.")
+            except Exception as e:
+                logger.error(f"ML imputation failed: {e}")
+                raise
 
         return output_files
 

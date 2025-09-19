@@ -2,6 +2,7 @@
 
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import List
 
 import pandas as pd
@@ -36,17 +37,25 @@ class BaseFormatter(ABC):
         pass
 
     def pivot_to_final_format(
-        self, data: pd.DataFrame, admin_level: int
+        self, data: pd.DataFrame, admin_level: int, output_file_path: Path
     ) -> pd.DataFrame:
         """Convert time series data to pivot format for CSV output
 
         Args:
             data: DataFrame with time series data
             admin_level: GADM admin level being processed
+            output_file_path: Path where final output will be saved
 
         Returns:
             DataFrame with pivot format
         """
+
+        # Check if output already exists - skip expensive formatting if so
+        if output_file_path.exists():
+            logger.info(f"Output file already exists, loading from cache: {output_file_path}")
+            return pd.read_csv(output_file_path)
+
+        logger.debug(f"Output file doesn't exist, proceeding with formatting: {output_file_path}")
         logger.debug("Converting time series data to pivot format")
 
         time_column = self.get_time_column_name()

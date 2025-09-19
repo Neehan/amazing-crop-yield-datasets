@@ -86,12 +86,16 @@ class SoilProcessor(BaseProcessor):
             combined_df = pd.concat(all_depth_results, ignore_index=True)
 
             # Step 4: Format to pivot format
+            filename = f"soil_{property_name}_weighted_admin{self.config.admin_level}.{self.config.output_format}"
+            aggregated_dir = intermediate_dir / "aggregated"
+            aggregated_dir.mkdir(parents=True, exist_ok=True)
+            output_file_path = aggregated_dir / filename
+
             pivoted_df = self.formatter.pivot_to_final_format(
-                combined_df, self.config.admin_level
+                combined_df, self.config.admin_level, output_file_path
             )
 
             # Step 5: Save output
-            filename = f"soil_{property_name}_weighted_admin{self.config.admin_level}.{self.config.output_format}"
             output_file = self.save_output(
                 pivoted_df, filename, self.config.output_format, intermediate_dir
             )
