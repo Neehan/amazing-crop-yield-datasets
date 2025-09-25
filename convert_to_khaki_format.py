@@ -322,10 +322,9 @@ def convert_to_khaki_format(
     if not yield_columns:
         raise ValueError("No yield columns found")
 
-    # Convert yield columns to integers (handle NaN values properly)
+    # Ensure yield columns are numeric (keep as float - yield is continuous data)
     for col in yield_columns:
-        # First ensure it's numeric, then convert to nullable integer type
-        merged_df[col] = pd.to_numeric(merged_df[col], errors="coerce").astype("Int64")  # type: ignore
+        merged_df[col] = pd.to_numeric(merged_df[col], errors="coerce")
 
     khaki_columns.extend(yield_columns)
 
