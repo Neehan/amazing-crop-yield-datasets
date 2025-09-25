@@ -3,6 +3,18 @@
 **Source:** Ministerio de Agricultura, Ganadería y Pesca (MAGyP) – *Estimaciones Agrícolas* portal.  
 URL: [https://datosestimaciones.magyp.gob.ar/reportes.php?reporte=Estimaciones](https://datosestimaciones.magyp.gob.ar/reportes.php?reporte=Estimaciones)
 
+## Prerequisites
+
+Before processing data, download the GADM administrative boundaries:
+
+```bash
+# Create GADM directory
+mkdir -p data/argentina/gadm
+
+# Download Argentina GADM data (required for name mapping)
+wget -O data/argentina/gadm/gadm41_ARG.gpkg "https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_ARG.gpkg"
+```
+
 ---
 
 ## Data Download Guide

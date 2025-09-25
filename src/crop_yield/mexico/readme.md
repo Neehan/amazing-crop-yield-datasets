@@ -13,6 +13,18 @@ URL: [https://nube.agricultura.gob.mx/cierre_agricola/](https://nube.agricultura
 * **beans** (Frijol) - Code: 152
 * **barley** (Cebada grano) - Code: 77
 
+## Prerequisites
+
+Before processing data, download the GADM administrative boundaries:
+
+```bash
+# Create GADM directory
+mkdir -p data/mexico/gadm
+
+# Download Mexico GADM data (required for name mapping)
+wget -O data/mexico/gadm/gadm41_MEX.gpkg "https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_MEX.gpkg"
+```
+
 ## Download
 
 ```bash

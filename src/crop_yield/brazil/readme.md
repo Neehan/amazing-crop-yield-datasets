@@ -3,6 +3,18 @@
 **Source:** Instituto Brasileiro de Geografia e Estatística (IBGE) – *Produção Agrícola Municipal* (PAM) table 1612.  
 URL: [https://sidra.ibge.gov.br/tabela/1612](https://sidra.ibge.gov.br/tabela/1612)
 
+## Prerequisites
+
+Before processing data, download the GADM administrative boundaries:
+
+```bash
+# Create GADM directory
+mkdir -p data/brazil/gadm
+
+# Download Brazil GADM data (required for name mapping)
+wget -O data/brazil/gadm/gadm41_BRA.gpkg "https://geodata.ucdavis.edu/gadm/gadm4.1/gpkg/gadm41_BRA.gpkg"
+```
+
 ## Download
 
 ```bash
