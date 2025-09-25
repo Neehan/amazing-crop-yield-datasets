@@ -314,12 +314,13 @@ def process_crop_yield_data(
         logger.info(f"Processing {len(crop_df)} records for {crop}")
 
         # Create standardized output matching Brazil format exactly
+        crop_yield_column = f"{crop}_yield"
         output_data = {
             "country": COUNTRY_NAME,
             "admin_level_1": crop_df["admin_level_1"],
             "admin_level_2": crop_df["admin_level_2"],
             "year": crop_df["year"],
-            YIELD_COLUMN: crop_df["yield"],  # Generic yield column
+            crop_yield_column: crop_df["yield"],
             AREA_PLANTED_COLUMN: crop_df["area_planted"],
             AREA_HARVESTED_COLUMN: crop_df["area_harvested"],
             PRODUCTION_COLUMN: crop_df["production"],
@@ -331,7 +332,7 @@ def process_crop_yield_data(
         output_df = output_df.dropna(subset=["admin_level_1"])
 
         # Apply data quality filtering
-        output_df = filter_administrative_units_by_quality(output_df, YIELD_COLUMN)
+        output_df = filter_administrative_units_by_quality(output_df, crop_yield_column)
 
         # Sort by admin_level_1, admin_level_2, year
         output_df = output_df.sort_values(

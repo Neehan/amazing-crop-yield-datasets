@@ -322,9 +322,10 @@ def convert_to_khaki_format(
     if not yield_columns:
         raise ValueError("No yield columns found")
 
-    # Convert yield columns to integers (NaN values will remain as NaN)
+    # Convert yield columns to integers (handle NaN values properly)
     for col in yield_columns:
-        merged_df[col] = pd.to_numeric(merged_df[col], errors="raise").astype("Int64")  # type: ignore
+        # First ensure it's numeric, then convert to nullable integer type
+        merged_df[col] = pd.to_numeric(merged_df[col], errors="coerce").astype("Int64")  # type: ignore
 
     khaki_columns.extend(yield_columns)
 
@@ -423,18 +424,13 @@ def main():
     # Set logging level based on command line argument
     logging.getLogger().setLevel(getattr(logging, args.log_level))
 
-    try:
-        output_file = convert_to_khaki_format(
-            data_dir=args.data_dir,
-            country=args.country,
-            crops=args.crops,
-            output_dir=args.output_dir,
-        )
-        logger.info(f"Successfully created Khaki format file: {output_file}")
-
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        return 1
+    output_file = convert_to_khaki_format(
+        data_dir=args.data_dir,
+        country=args.country,
+        crops=args.crops,
+        output_dir=args.output_dir,
+    )
+    logger.info(f"Successfully created Khaki format file: {output_file}")
 
     return 0
 
