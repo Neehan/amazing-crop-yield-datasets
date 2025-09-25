@@ -95,8 +95,10 @@ class CropCalendarProcessor(BaseProcessor):
         # Check for cached result using base config
         final_dir = self.config.get_final_directory()
         final_dir.mkdir(parents=True, exist_ok=True)
+        management_dir = final_dir / "management"
+        management_dir.mkdir(parents=True, exist_ok=True)
         output_filename = f"crop_calendar_{crop_name}.csv"
-        output_path = final_dir / "management" / output_filename
+        output_path = management_dir / output_filename
 
         if output_path.exists():
             logger.info(f"Using cached result: {output_path}")

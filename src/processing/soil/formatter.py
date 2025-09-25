@@ -2,6 +2,7 @@
 
 import logging
 from typing import Any
+from pathlib import Path
 
 import pandas as pd
 
@@ -131,7 +132,7 @@ class SoilFormatter(BaseFormatter):
         return data.rename(columns=rename_map)
 
     def pivot_to_final_format(
-        self, data: pd.DataFrame, admin_level: int
+        self, data: pd.DataFrame, admin_level: int, output_file_path: Any = None
     ) -> pd.DataFrame:
         """Convert depth series data to pivot format for CSV output"""
         logger.debug("Converting depth series data to pivot format")

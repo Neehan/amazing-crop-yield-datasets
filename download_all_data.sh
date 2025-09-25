@@ -56,11 +56,11 @@ cd /home/notadib/projects/amazing-crop-yield-datasets
 # pip install -r requirements.txt  # uncomment if dependencies not installed
 
 # Download weather data
-echo "Starting weather data download for $COUNTRY..."
+echo "Starting weather data download for $COUNTRY ($START_YEAR-$END_YEAR)..."
 python -m cli.download_weather --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --concurrent 8
 
 # Download land surface data (requires Google Earth Engine authentication)
-echo "Starting land surface data download for $COUNTRY..."
+echo "Starting land surface data download for $COUNTRY ($START_YEAR-$END_YEAR)..."
 python -m cli.download_land_surface --country "$COUNTRY" --start-year $START_YEAR --end-year $END_YEAR --concurrent 8 --variables lai_low lai_high
 # ndvi doesnt exist between 1979-81 so need to download separately
 python -m cli.download_land_surface --country "$COUNTRY" --start-year $NDVI_START_YEAR --end-year $END_YEAR --concurrent 8 --variables ndvi
