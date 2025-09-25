@@ -39,13 +39,15 @@ def parse_html_data(html_file: Path) -> pd.DataFrame:
     with open(html_file, "r", encoding="iso-8859-1") as f:
         content = f.read()
 
-    # PHP warnings are common but don't break parsing - data is still in CDATA section
+    # Simple validation - just check basics to avoid false positives
+    if len(content) < 1000:  # Very small files are likely errors
+        raise ValueError(f"File too small ({len(content)} chars): {html_file}")
 
     # Extract the HTML content from CDATA section
     cdata_match = re.search(r"<!\[CDATA\[(.*?)\]\]>", content, re.DOTALL)
     if not cdata_match:
         raise ValueError(
-            f"No CDATA section found in {html_file}. File format is invalid."
+            f"No CDATA section found in {html_file}. File may be corrupted."
         )
 
     html_content = cdata_match.group(1)
@@ -155,25 +157,63 @@ def load_all_crop_data(
         f"Loading {len(crops)} crops data for {len(years)} years ({start_year}-{end_year-1})"
     )
 
-    # Load and combine all crop-year files
+    # Track missing and invalid files for comprehensive reporting
+    missing_files = []
+    invalid_files = []
+    successful_files = []
     all_data = []
+
+    # Load and combine all crop-year files
     for crop in crops:
+        crop_missing = []
         for year in years:
             year_file = input_dir / f"{crop}_{year}.html"
             if year_file.exists():
-                year_data = parse_html_data(year_file)
-                if not year_data.empty:
-                    all_data.append(year_data)
-                    logger.debug(
-                        f"Loaded {len(year_data)} records from {year_file.name}"
-                    )
+                try:
+                    year_data = parse_html_data(year_file)
+                    if not year_data.empty:
+                        all_data.append(year_data)
+                        successful_files.append(year_file.name)
+                        logger.debug(
+                            f"Loaded {len(year_data)} records from {year_file.name}"
+                        )
+                    else:
+                        logger.warning(
+                            f"No valid data extracted from {year_file.name} - file may contain server error or no crop data for this year"
+                        )
+                        invalid_files.append(year_file.name)
+                except Exception as e:
+                    logger.error(f"Failed to parse {year_file.name}: {e}")
+                    invalid_files.append(year_file.name)
             else:
-                logger.warning(f"File not found: {year_file}")
+                missing_files.append(year_file.name)
+                crop_missing.append(year)
+
+        # Report missing years for each crop
+        if crop_missing:
+            missing_years = sorted(crop_missing)
+            logger.warning(
+                f"Missing {len(missing_years)} years for {crop}: {missing_years}"
+            )
+
+    # Comprehensive reporting
+    total_expected = len(crops) * len(years)
+    logger.info(f"File processing summary:")
+    logger.info(f"  Expected files: {total_expected}")
+    logger.info(f"  Successful: {len(successful_files)}")
+    logger.info(f"  Missing: {len(missing_files)}")
+    logger.info(f"  Invalid/corrupted: {len(invalid_files)}")
+
+    if missing_files:
+        logger.warning(f"Missing files may indicate download failures or data gaps")
+    if invalid_files:
+        logger.warning(f"Invalid files may indicate server errors during download")
 
     # Fail fast if no valid data found
     if not all_data:
         raise ValueError(
-            f"No data found for crops {crops} in year range {start_year}-{end_year-1}"
+            f"No valid data found for crops {crops} in year range {start_year}-{end_year-1}. "
+            f"Missing: {len(missing_files)} files, Invalid: {len(invalid_files)} files."
         )
 
     # Combine all data

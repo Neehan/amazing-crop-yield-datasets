@@ -12,7 +12,8 @@ import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Union, Any
+import re
 
 from src.crop_yield.mexico.models import (
     CROP_CODES,
@@ -22,6 +23,36 @@ from src.crop_yield.mexico.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def validate_response_content(
+    response_text: str, crop: str, year: int
+) -> Dict[str, Any]:
+    """
+    Validate server response to detect errors, rate limits, or invalid data.
+
+    Args:
+        response_text: Raw HTML response from server
+        crop: Crop name for context
+        year: Year for context
+
+    Returns:
+        Dict with 'valid' (bool) and 'error' (str) keys
+    """
+    # Simple validation - just check basics to avoid false positives
+
+    # Check for minimum expected content (very short responses are likely errors)
+    if len(response_text) < 1000:  # Valid files are usually much larger
+        return {
+            "valid": False,
+            "error": f"Response too short ({len(response_text)} chars)",
+        }
+
+    # Check for CDATA section (required for valid responses)
+    if "<![CDATA[" not in response_text:
+        return {"valid": False, "error": "No CDATA section found"}
+
+    return {"valid": True, "error": None}
 
 
 def download_single_year(
@@ -78,11 +109,27 @@ def download_single_year(
     response = session.post(API_BASE_URL, data=payload, headers=headers)
     response.raise_for_status()
 
+    # Validate response content before saving
+    response_text = response.text
+    validation_result = validate_response_content(response_text, crop, year)
+
+    if not validation_result["valid"]:
+        logger.warning(
+            f"Invalid response for {crop} {year}: {validation_result['error']}"
+        )
+        # Still save the file for debugging, but mark it as invalid
+        invalid_output_file = output_dir / f"{crop}_{year}_INVALID.html"
+        with open(invalid_output_file, "w", encoding="iso-8859-1") as f:
+            f.write(response_text)
+        raise ValueError(
+            f"Invalid server response for {crop} {year}: {validation_result['error']}"
+        )
+
     # Save raw HTML data by year
     with open(output_file, "w", encoding="iso-8859-1") as f:
-        f.write(response.text)
+        f.write(response_text)
 
-    logger.debug(f"Downloaded {crop} data for {year} ({len(response.text)} chars)")
+    logger.debug(f"Downloaded {crop} data for {year} ({len(response_text)} chars)")
     return year, output_file
 
 
