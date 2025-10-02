@@ -13,7 +13,11 @@ import re
 from io import StringIO
 from typing import List
 
-from src.crop_yield.mexico.models import CROP_NAME_MAPPING, COUNTRY_NAME
+from src.crop_yield.mexico.models import (
+    CROP_NAME_MAPPING,
+    COUNTRY_NAME,
+    get_base_crop_name,
+)
 from src.crop_yield.mexico.name_mapping import MexicoNameMapper
 from src.crop_yield.base import filter_administrative_units_by_quality
 from src.crop_yield.base.constants import (
@@ -32,8 +36,10 @@ def parse_html_data(html_file: Path) -> pd.DataFrame:
     if not html_file.exists():
         raise FileNotFoundError(f"HTML file not found: {html_file}")
 
-    # Extract year from filename (e.g., corn_2024.html -> 2024)
-    year = int(html_file.stem.split("_")[-1])
+    # Extract crop and year from filename (e.g., beans_irrigated_2024.html -> beans_irrigated, 2024)
+    parts = html_file.stem.split("_")
+    year = int(parts[-1])
+    crop_from_filename = "_".join(parts[:-1])
 
     # Read HTML file and extract content from CDATA
     with open(html_file, "r", encoding="iso-8859-1") as f:
@@ -110,8 +116,9 @@ def parse_html_data(html_file: Path) -> pd.DataFrame:
             numeric_series = pd.to_numeric(series, errors="coerce")
             df[col] = numeric_series.fillna(0.0)  # type: ignore
 
-    # Add metadata
+    # Add metadata - use filename for crop name to preserve _irrigated suffix
     df["crop"] = crop_name
+    df["crop_from_filename"] = crop_from_filename
     df["year"] = year
 
     # Clean string columns
@@ -121,7 +128,7 @@ def parse_html_data(html_file: Path) -> pd.DataFrame:
     if len(df) == 0:
         raise ValueError(f"No data extracted from {html_file}")
 
-    # Map crop names to English
+    # Map crop names to English (from HTML content for validation)
     df["crop_english"] = df["crop"].map(CROP_NAME_MAPPING)  # type: ignore
 
     # Remove rows with unmapped crops
@@ -145,8 +152,10 @@ def load_all_crop_data(
         )
 
     # Validate all crop names - fail fast if any invalid
+    # Handle irrigated crop variants (e.g., 'beans_irrigated' -> 'beans')
     for crop in crops:
-        if crop not in CROP_CODES:
+        base_crop = get_base_crop_name(crop)
+        if base_crop not in CROP_CODES:
             raise ValueError(
                 f"Unknown crop: {crop}. Available crops: {list(CROP_CODES.keys())}"
             )
@@ -303,14 +312,14 @@ def process_crop_yield_data(
 
     # Process each crop separately to create individual CSV files
     output_files = []
-    unique_crops = df["crop_english"].unique()
+    unique_crops = df["crop_from_filename"].unique()
 
     for crop in unique_crops:
         if pd.isna(crop):
             continue
 
         # Filter data for this crop
-        crop_df = df[df["crop_english"] == crop].copy()
+        crop_df = df[df["crop_from_filename"] == crop].copy()
         logger.info(f"Processing {len(crop_df)} records for {crop}")
 
         # Create standardized output matching Brazil format exactly
@@ -358,7 +367,7 @@ def main():
     parser.add_argument(
         "--crops",
         nargs="*",
-        help="Crop names (e.g., corn soybean). If not specified, processes all available crops",
+        help="Crop names (e.g., corn soybean beans_irrigated beans_rainfed). Use '_irrigated' suffix for irrigated-only data or '_rainfed' suffix for rainfed-only data. If not specified, processes all available crops",
     )
     parser.add_argument(
         "--start-year",

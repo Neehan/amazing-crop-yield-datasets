@@ -13,6 +13,13 @@ URL: [https://nube.agricultura.gob.mx/cierre_agricola/](https://nube.agricultura
 * **beans** (Frijol) - Code: 152
 * **barley** (Cebada grano) - Code: 77
 
+**Irrigation Modality Variants:**
+- **Default (no suffix):** Combined irrigated + rainfed/temporal data (modality 3)
+- **`_irrigated` suffix:** Irrigated-only data (modality 1)  
+  Examples: `beans_irrigated`, `corn_irrigated`, `wheat_irrigated`
+- **`_rainfed` suffix:** Rainfed/temporal-only data (modality 2)  
+  Examples: `beans_rainfed`, `corn_rainfed`, `wheat_rainfed`
+
 ## Prerequisites
 
 Before processing data, download the GADM administrative boundaries:
@@ -40,6 +47,12 @@ python -m src.crop_yield.mexico.downloader --start-year 2020 --end-year 2023
 # Download with debug output
 python -m src.crop_yield.mexico.downloader --debug
 
+# Download irrigated-only data
+python -m src.crop_yield.mexico.downloader --crops beans_irrigated corn_irrigated
+
+# Download rainfed-only data
+python -m src.crop_yield.mexico.downloader --crops beans_rainfed corn_rainfed wheat_rainfed
+
 # Download specific crops with custom year range
 python -m src.crop_yield.mexico.downloader --crops corn tomato --start-year 2020 --end-year 2025
 ```
@@ -59,6 +72,9 @@ python -m src.crop_yield.mexico.processor --start-year 2020 --end-year 2023
 # Process with debug output
 python -m src.crop_yield.mexico.processor --debug
 
+# Process irrigated or rainfed variants
+python -m src.crop_yield.mexico.processor --crops beans_irrigated corn_rainfed
+
 # Process specific crops with custom year range
 python -m src.crop_yield.mexico.processor --crops tomato beans --start-year 2020 --end-year 2025
 ```
@@ -68,21 +84,26 @@ python -m src.crop_yield.mexico.processor --crops tomato beans --start-year 2020
 Processed files: `crop_{crop_name}_yield.csv` (one file per crop)
 
 **Example output files:**
-- `crop_corn_yield.csv` (50,835 records)
-- `crop_beans_yield.csv` (37,902 records)  
-- `crop_tomato_yield.csv` (15,391 records)
-- `crop_sorghum_yield.csv` (12,246 records)
-- `crop_wheat_yield.csv` (10,387 records)
-- `crop_sugarcane_yield.csv` (5,531 records)
-- `crop_barley_yield.csv` (4,541 records)
-- `crop_soybean_yield.csv` (685 records)
+- `crop_corn_yield.csv` (50,835 records) - combined irrigated + rainfed
+- `crop_beans_yield.csv` (37,902 records) - combined irrigated + rainfed
+- `crop_tomato_yield.csv` (15,391 records) - combined irrigated + rainfed
+- `crop_sorghum_yield.csv` (12,246 records) - combined irrigated + rainfed
+- `crop_wheat_yield.csv` (10,387 records) - combined irrigated + rainfed
+- `crop_sugarcane_yield.csv` (5,531 records) - combined irrigated + rainfed
+- `crop_barley_yield.csv` (4,541 records) - combined irrigated + rainfed
+- `crop_soybean_yield.csv` (685 records) - combined irrigated + rainfed
+
+**Irrigation modality variants:**
+- `crop_beans_irrigated_yield.csv` - irrigated-only data
+- `crop_beans_rainfed_yield.csv` - rainfed/temporal-only data
+- Similar files can be created for any crop by adding `_irrigated` or `_rainfed` suffix
 
 **Columns:**
 - `country` - "Mexico"
 - `admin_level_1` - State name (GADM compatible)
 - `admin_level_2` - Municipality name (GADM compatible)
 - `year` - Year
-- `yield` - Yield in kg/ha (converted from tonnes/ha)
+- `{crop_name}_yield` - Yield in kg/ha (e.g., `beans_yield`, `beans_irrigated_yield`, `beans_rainfed_yield`)
 - `area_planted` - Area planted in hectares (Superficie Sembrada)
 - `area_harvested` - Area harvested in hectares (Superficie Cosechada)
 - `production` - Production quantity in tonnes (Producción)

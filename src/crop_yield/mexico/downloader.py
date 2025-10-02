@@ -12,14 +12,16 @@ import argparse
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
-from typing import List, Tuple, Dict, Union, Any
-import re
+from typing import List, Tuple, Dict, Any
 
 from src.crop_yield.mexico.models import (
     CROP_CODES,
     CROP_TYPE_CODE,
     API_BASE_URL,
     API_PARAMS,
+    is_irrigated_crop,
+    is_rainfed_crop,
+    get_base_crop_name,
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +81,16 @@ def download_single_year(
         logger.debug(f"File already exists, skipping download: {output_file}")
         return year, output_file
 
+    # Determine irrigation modality based on crop suffix
+    if is_irrigated_crop(crop):
+        irrigation_param = API_PARAMS["modalidad_riego_only"]  # 1 = Irrigated only
+    elif is_rainfed_crop(crop):
+        irrigation_param = API_PARAMS[
+            "modalidad_temporal_only"
+        ]  # 2 = Rainfed/temporal only
+    else:
+        irrigation_param = API_PARAMS["modalidad_riego_temporal"]  # 3 = Combined
+
     # Build payload for API request using configuration from models
     payload = {
         "xajax": "reporte",
@@ -87,7 +99,7 @@ def download_single_year(
             API_PARAMS["nivel_municipio"],  # Position 0: 1
             str(year),  # Position 1: year (e.g., 2024)
             CROP_TYPE_CODE,  # Position 2: 5 (field crop type)
-            API_PARAMS["modalidad_riego_temporal"],  # Position 3: 3 (Riego + Temporal)
+            irrigation_param,  # Position 3: 1 (Riego only) or 3 (Riego + Temporal)
             API_PARAMS["ciclo_todos"],  # Position 4: 0
             API_PARAMS["estado_placeholder"],  # Position 5: --
             API_PARAMS["municipio_placeholder"],  # Position 6: --
@@ -162,7 +174,8 @@ def download_mexico_crop_yield(
 
     # Validate all crop names - fail fast if any invalid
     for crop in crops:
-        if crop not in CROP_CODES:
+        base_crop = get_base_crop_name(crop)
+        if base_crop not in CROP_CODES:
             raise ValueError(
                 f"Unknown crop: {crop}. Available crops: {list(CROP_CODES.keys())}"
             )
@@ -181,7 +194,8 @@ def download_mexico_crop_yield(
         # Submit all download tasks for all crops and years
         future_to_info = {}
         for crop in crops:
-            crop_code = CROP_CODES[crop]
+            base_crop = get_base_crop_name(crop)
+            crop_code = CROP_CODES[base_crop]
             for year in years:
                 future = executor.submit(
                     download_single_year, crop, crop_code, year, output_dir
@@ -211,7 +225,7 @@ def main():
     parser.add_argument(
         "--crops",
         nargs="*",
-        help="Crop names (e.g., corn soybean). If not specified, downloads all available crops",
+        help="Crop names (e.g., corn soybean beans_irrigated beans_rainfed). Use '_irrigated' suffix for irrigated-only data or '_rainfed' suffix for rainfed-only data. If not specified, downloads all available crops",
     )
     parser.add_argument(
         "--start-year",

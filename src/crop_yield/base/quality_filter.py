@@ -32,7 +32,7 @@ def filter_administrative_units_by_quality(
         Filtered DataFrame with only high-quality administrative units
     """
     max_year = df["year"].max()
-    recent_years = range(max_year - EVALUATION_YEARS + 1, max_year + 1)
+    recent_years = range(max_year - EVALUATION_YEARS + 1, max_year + 1)  # type: ignore
     recent_data = df[df["year"].isin(recent_years)]
 
     if len(recent_data) == 0:

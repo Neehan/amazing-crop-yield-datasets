@@ -20,6 +20,37 @@ CROP_CODES: Dict[str, str] = {
     # Additional crops will be added as we discover their codes
 }
 
+
+# Function to detect irrigated crop variants
+def is_irrigated_crop(crop_name: str) -> bool:
+    """Check if a crop name ends with '_irrigated'."""
+    return crop_name.endswith("_irrigated")
+
+
+def is_rainfed_crop(crop_name: str) -> bool:
+    """Check if a crop name ends with '_rainfed'."""
+    return crop_name.endswith("_rainfed")
+
+
+def get_base_crop_name(crop_name: str) -> str:
+    """Extract base crop name from irrigated or rainfed variant (e.g., 'corn_irrigated' -> 'corn', 'beans_rainfed' -> 'beans')."""
+    if is_irrigated_crop(crop_name):
+        return crop_name[:-10]  # Remove '_irrigated' suffix
+    if is_rainfed_crop(crop_name):
+        return crop_name[:-8]  # Remove '_rainfed' suffix
+    return crop_name
+
+
+def get_irrigated_crop_name(base_crop: str) -> str:
+    """Get irrigated variant name from base crop (e.g., 'corn' -> 'corn_irrigated')."""
+    return f"{base_crop}_irrigated"
+
+
+def get_rainfed_crop_name(base_crop: str) -> str:
+    """Get rainfed variant name from base crop (e.g., 'corn' -> 'corn_rainfed')."""
+    return f"{base_crop}_rainfed"
+
+
 # SIAP crop type code (same for all field crops)
 CROP_TYPE_CODE = "5"  # Field crop type
 
@@ -73,6 +104,8 @@ API_BASE_URL = "https://nube.agricultura.gob.mx/cierre_agricola/"
 API_PARAMS = {
     "nivel_municipio": "1",  # Position 0: Nivel Municipio
     "modalidad_riego_temporal": "3",  # Position 3: Modalidad (3 = Riego + Temporal)
+    "modalidad_riego_only": "1",  # Position 3: Modalidad (1 = Riego only)
+    "modalidad_temporal_only": "2",  # Position 3: Modalidad (2 = Temporal only / rainfed)
     "ciclo_todos": "0",  # Position 4: All cycles
     "estado_placeholder": "--",  # Position 5: Estado placeholder
     "municipio_placeholder": "--",  # Position 6: Municipio placeholder

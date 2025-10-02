@@ -187,7 +187,7 @@ def process_crop_file(crop_file: Path, output_dir: Path) -> Path:
     output_df.to_csv(output_file, index=False)
 
     final_departments = (
-        output_df[["admin_level_1", "admin_level_2"]].drop_duplicates().shape[0]
+        output_df[["admin_level_1", "admin_level_2"]].drop_duplicates().shape[0]  # type: ignore
     )
 
     min_year = output_df["year"].min()
